@@ -94,10 +94,10 @@ mean), so **retune the close/open thresholds after changing mode** — don't car
 numbers across. The panel readout `gap s/p/a` shows all three at once, so you can
 watch how each responds to your actual hands before committing.
 
-`Advance on` picks when the trigger fires: `closed` (default) starts the transition
-while the hands are shut, which is what Phase 1 wants so Lucy's transition frames
-stay hidden; `opening` fires as the hands part, matching the literal wording of
-PRD §2.2.
+The switch always fires **on close**, never on opening — reopening only re-arms for
+the next cycle. That is fixed, not a setting: the closed portal is the only moment
+the swap is guaranteed to be masked, and it gives Lucy the whole closed period to
+settle before the hands reveal it.
 
 ## Switch transitions (PRD §4.1)
 

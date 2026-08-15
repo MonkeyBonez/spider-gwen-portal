@@ -38,8 +38,6 @@ export interface Config {
   cooldownMs: number;
   /** |d(gap)/dt| required to count as "moving together"/"moving apart". 0 disables. */
   velocityEpsilon: number;
-  /** When to advance the dimension: on CLOSED latch, or at the moment of opening. */
-  advanceOn: 'closed' | 'opening';
   /** How long a total tracking dropout is tolerated before the state machine resets. */
   lostResetMs: number;
 
@@ -87,7 +85,6 @@ export const DEFAULT_CONFIG: Config = {
   debounceFrames: 3,
   cooldownMs: 500,
   velocityEpsilon: 0.4,
-  advanceOn: 'closed',
   lostResetMs: 1000,
 
   feather: 6,

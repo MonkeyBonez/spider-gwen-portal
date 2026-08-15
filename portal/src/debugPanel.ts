@@ -101,7 +101,6 @@ export class DebugPanel {
 
     this.el.append(
       this.select('contactMode', 'Contact mode', CONTACT_MODES, CONTACT_BLURBS),
-      this.select('advanceOn', 'Advance on', ['closed', 'opening']),
       this.select('transitionKind', 'Switch transition', TRANSITION_KINDS, TRANSITION_BLURBS),
     );
 

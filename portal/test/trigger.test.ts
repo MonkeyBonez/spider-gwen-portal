@@ -84,6 +84,28 @@ function run(trigger: GestureTrigger, trace: number[], opts: RunOptions = {}) {
   return { advances, states };
 }
 
+/** The `gap` value on each frame where the trigger advanced. */
+function advanceGaps(trigger: GestureTrigger, trace: number[]): number[] {
+  const cfg: Config = { ...DEFAULT_CONFIG };
+  let prevGap = trace[0];
+  let velocity = 0;
+  let t = 0;
+  const gaps: number[] = [];
+
+  for (const gap of trace) {
+    t += DT * 1000;
+    const instant = (gap - prevGap) / DT;
+    velocity += (instant - velocity) * 0.35;
+    prevGap = gap;
+    const result = trigger.update(
+      { t, dt: DT, handsPresent: true, gap, area: gap * gap, gapVelocity: velocity },
+      cfg,
+    );
+    if (result.advance) gaps.push(gap);
+  }
+  return gaps;
+}
+
 describe('CloseOpenTrigger', () => {
   it('advances exactly once per close→open cycle over 20 cycles', () => {
     const { advances } = run(new CloseOpenTrigger(), gapTrace(20));
@@ -95,11 +117,15 @@ describe('CloseOpenTrigger', () => {
     expect(advances).toBe(20);
   });
 
-  it('advances once per cycle when firing on opening instead of closing', () => {
-    const { advances } = run(new CloseOpenTrigger(), gapTrace(20), {
-      cfg: { advanceOn: 'opening' },
-    });
-    expect(advances).toBe(20);
+  it('fires while the portal is shut, never on the way back open', () => {
+    // Every advance must land on a frame whose gap is below the close threshold,
+    // so the swap is always masked (PRD §2.2).
+    const trace = gapTrace(10);
+    const gapsAtAdvance = advanceGaps(new CloseOpenTrigger(), trace);
+    expect(gapsAtAdvance).toHaveLength(10);
+    for (const gap of gapsAtAdvance) {
+      expect(gap).toBeLessThan(DEFAULT_CONFIG.closeThreshold);
+    }
   });
 
   it('visits every state in the machine', () => {

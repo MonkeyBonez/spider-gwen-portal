@@ -5,11 +5,11 @@
  *
  * - Fingertips moving together AND gap below `closeThreshold` for
  *   `debounceFrames` consecutive frames latches CLOSED and arms the trigger.
- * - Moving apart from CLOSED (gap back above `openThreshold`) disarms it.
- * - `advanceOn` decides *when* the switch actually fires:
- *     'closed'  — at the CLOSED latch, so the swap is hidden behind the hands
- *                 (this is the §2.2 design intent, and what Phase 1 wants).
- *     'opening' — at the moment the hands start to part.
+ * - **The switch fires at that latch**, while the portal is shut, so the swap is
+ *   masked. Phase 1 fires `setPrompt` here, giving the model the whole closed
+ *   period to settle before the hands reveal it again.
+ * - Moving apart from CLOSED (gap back above `openThreshold`) only re-arms for
+ *   the next cycle; it never fires. One cycle, one switch.
  * - `cooldownMs` prevents rapid-fire flapping.
  *
  * Tracking dropouts do not reset the machine immediately: an arm survives a
@@ -58,25 +58,26 @@ export class CloseOpenTrigger implements GestureTrigger {
     }
 
     if (!this.armed) {
-      // Looking for a confirmed close.
+      // Looking for a confirmed close. The switch fires here, at the latch —
+      // never on the way back open.
       if (isTouching && (closing || this.closeFrames > 0)) {
         this.closeFrames++;
         this.state = 'CLOSING';
         if (this.closeFrames >= cfg.debounceFrames) {
           this.state = 'CLOSED';
           this.armed = true;
-          if (cfg.advanceOn === 'closed') advance = this.tryFire(s.t, cfg);
+          advance = this.tryFire(s.t, cfg);
         }
       } else {
         this.closeFrames = 0;
         if (isOpen) this.state = 'OPEN';
       }
     } else {
-      // Armed: waiting for the hands to part again.
+      // Armed: the switch already fired. Reopening only re-arms for the next
+      // cycle, so one close→open cycle can never produce two switches.
       this.state = 'CLOSED';
       if (opening && !isTouching) this.state = 'OPENING';
       if (isOpen) {
-        if (cfg.advanceOn === 'opening') advance = this.tryFire(s.t, cfg);
         this.armed = false;
         this.closeFrames = 0;
         this.state = 'OPEN';

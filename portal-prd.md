@@ -49,12 +49,15 @@ Signals per frame:
 - `area` = polygon area, similarly normalized. **Note:** this is a weak signal and must not be the primary trigger input — for a rotated hand the polygon is a bowtie whose two lobes have opposite winding, so the shoelace area cancels to ~0 while the portal is plainly open. Keep it as a readout.
 - Velocity of `gap` (moving together vs. apart).
 
-Proposed logic v1 (Sne's idea):
+Logic v1 (Sne's idea):
 - When fingertips are moving together AND `gap` drops below a "touching" threshold → mark `CLOSED` (set a flag).
-- When fingertips start moving apart from `CLOSED` → **advance to the next prompt** at the moment of opening.
+- **Advance to the next prompt at that moment — on close, always.** This is settled; do not make it configurable and do not fire on opening. An earlier draft of this document proposed advancing "at the moment of opening"; that is superseded.
+- Reopening does not fire. It only re-arms the trigger for the next cycle, which is what guarantees one switch per close→open cycle.
 - Debounce: require `CLOSED` to hold for N frames (start N=3) before it can trigger; cooldown of ~500ms between switches to prevent rapid-fire flapping.
 
-Design intent: the prompt swap should happen while the portal is closed/near-closed so the transition frames of the AI model are hidden behind the closed hands. Lucy 2.5 supports changing the prompt mid-stream on a live connection (`setPrompt` / `realtimeClient.set({prompt})`) with near-instant adaptation — so we fire `setPrompt` on the CLOSED flag, and by the time hands open, the new dimension has settled.
+Why close and not open: the swap has to be masked, and the closed portal is the only moment we can guarantee it is. Firing on close also hands the model the entire closed period to settle. Lucy 2.5 supports changing the prompt mid-stream on a live connection (`setPrompt` / `realtimeClient.set({prompt})`) with near-instant adaptation — so `setPrompt` fires on the CLOSED flag, and by the time the hands open, the new dimension has settled. Firing on open would expose the model's transition frames at exactly the moment the portal becomes visible, which is the one thing this design is trying to avoid.
+
+This pairs with the §4.1 collapse animation, which makes the masking our guarantee rather than the performer's: the portal is at zero visible area when the swap lands regardless of how well the hands occluded it.
 
 **Thresholds are guesses. Build a debug panel** (see §5) to tune them live.
 
@@ -167,8 +170,9 @@ provably at zero visible area at the instant the swap lands, regardless of where
 hands are. It also gives the switch a deliberate beat, which reads better on camera
 than an instant cut.
 
-That reframes the timing rule from §2.2. The trigger no longer performs the swap; it
-only *starts* the transition, and the swap happens at the collapse's low point. In
+This refines the timing rule from §2.2. The trigger still fires on close, but it no
+longer performs the swap itself — it *starts* the transition, and the swap happens at
+the collapse's low point a few frames later. In
 Phase 1, `setPrompt` fires there, and the hold duration becomes the knob for however
 long Lucy needs to settle (§7's open question) — lengthen the hold, not the gesture.
 
@@ -279,7 +283,7 @@ Open questions:
 ## 5. Debug panel (build in Phase 0, keep behind a flag)
 
 - Landmark overlay on/off; portal polygon outline on/off. (In Phase 1.5 this overlay grows into the performer-facing skeleton indicator — see §4.2 — so build it as one component, not two.)
-- Selectors: contact mode (§2.2.1), advance-on (closed/opening), switch transition (§4.1).
+- Selectors: contact mode (§2.2.1), switch transition (§4.1).
 - Sliders: EMA α, close threshold, open threshold, debounce frames, cooldown ms, sync delay Δ, transition collapse/hold/reopen/overshoot (§4.1).
 - Readouts: FPS, state machine state, normalized gap/area, `gap` under all three contact modes at once, Lucy connection state, generation seconds used.
 
