@@ -1,0 +1,89 @@
+/* Styles for transitions.html only. */
+
+#demo {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 24px 48px;
+}
+
+#demo header h1 {
+  font-size: 24px;
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+}
+
+#demo header p {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+  max-width: 78ch;
+  margin: 0 0 20px;
+}
+
+#demo .controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 14px 16px;
+  margin-bottom: 22px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+#demo .controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+}
+
+#demo .controls input[type='range'] {
+  width: 120px;
+  accent-color: var(--accent);
+}
+
+#demo .controls span {
+  min-width: 42px;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+#demo .panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+#demo figure {
+  margin: 0;
+}
+
+#demo canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #14161d;
+}
+
+#demo figcaption {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+#demo figcaption strong {
+  font-size: 13px;
+  font-family: ui-monospace, monospace;
+}
+
+#demo figcaption span {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}

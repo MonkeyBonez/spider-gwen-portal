@@ -3,7 +3,7 @@
  * Camera → MediaPipe → portal geometry → gesture trigger → canvas composite.
  */
 
-import { loadConfig, type Config } from './config';
+import { loadConfig, saveConfig, type Config } from './config';
 import { DIMENSIONS } from './dimensions';
 import {
   normalizedArea,
@@ -14,6 +14,12 @@ import {
 import { HandTracker } from './handTracking';
 import { Renderer } from './renderer';
 import { DebugPanel } from './debugPanel';
+import {
+  PortalTransition,
+  TRANSITION_KINDS,
+  applyTransition,
+  type TransitionSpec,
+} from './portalTransition';
 import { CloseOpenTrigger } from './triggers/closeOpenTrigger';
 import type { GestureTrigger } from './triggers/types';
 
@@ -25,6 +31,7 @@ export interface Hud {
   status: HTMLElement;
   dimension: HTMLElement;
   counter: HTMLElement;
+  toast: HTMLElement;
 }
 
 export class App {
@@ -33,6 +40,7 @@ export class App {
   private renderer: Renderer;
   private panel: DebugPanel;
   private trigger: GestureTrigger = new CloseOpenTrigger();
+  private transition = new PortalTransition();
 
   private video = document.createElement('video');
   private stream: MediaStream | null = null;
@@ -49,6 +57,7 @@ export class App {
   private dimensionIndex = 0;
   private switches = 0;
   private running = false;
+  private toastTimer = 0;
 
   private hud: Hud;
 
@@ -141,7 +150,21 @@ export class App {
       this.cfg,
     );
 
-    if (result.advance) {
+    // The trigger only *starts* the transition; the dimension actually changes
+    // when the portal is fully shut, so the swap is never seen mid-flight (§4.1).
+    if (result.advance) this.transition.trigger(t);
+
+    const spec: TransitionSpec = {
+      kind: this.cfg.transitionKind,
+      collapseMs: this.cfg.collapseMs,
+      holdMs: this.cfg.holdMs,
+      reopenMs: this.cfg.reopenMs,
+      overshoot: this.cfg.reopenOvershoot,
+      twistDegrees: this.cfg.twistDegrees,
+    };
+    const transition = this.transition.update(t, spec);
+
+    if (transition.swap) {
       // Phase 1 swaps this for `realtimeClient.setPrompt(nextDimension.prompt)`.
       this.dimensionIndex = (this.dimensionIndex + 1) % DIMENSIONS.length;
       this.switches++;
@@ -153,11 +176,18 @@ export class App {
     this.opacity += Math.max(-step, Math.min(step, target - this.opacity));
 
     const dimension = DIMENSIONS[this.dimensionIndex];
+
+    // Display-only reshaping. `this.smoothed` — the un-animated portal — is what
+    // the trigger above reads, so the animation can never drive the state machine.
+    const rendered = this.smoothed
+      ? applyTransition(this.smoothed, transition, this.cfg.transitionKind)
+      : null;
+
     this.renderer.render(
       {
         video: this.video,
         hands,
-        portal: this.smoothed,
+        portal: rendered,
         opacity: this.opacity,
         fill: dimension.color,
       },
@@ -178,7 +208,12 @@ export class App {
       hands: `${hands.left ? 'L' : '·'}${hands.right ? 'R' : '·'} (${hands.rawHands.length})`,
       dimension: dimension.name,
       switches: this.switches,
-      extra: { trigger: this.trigger.name, ...this.trigger.debug() },
+      extra: {
+        trigger: this.trigger.name,
+        ...this.trigger.debug(),
+        transition: transition.phase,
+        closure: transition.closure.toFixed(2),
+      },
     });
 
     requestAnimationFrame((next) => this.loop(next));
@@ -195,11 +230,30 @@ export class App {
     } else if (key === 'r') {
       this.switches = 0;
       this.trigger.reset();
+      this.transition.reset();
     } else if (e.code === 'Space') {
-      // Manual advance — lets you sanity-check compositing without gesturing.
+      // Manual advance — plays the full transition without needing the gesture,
+      // so you can compare variants back to back with your hands held still.
       e.preventDefault();
-      this.dimensionIndex = (this.dimensionIndex + 1) % DIMENSIONS.length;
+      this.transition.trigger(performance.now());
+    } else if (key >= '1' && key <= String(TRANSITION_KINDS.length)) {
+      this.cfg.transitionKind = TRANSITION_KINDS[Number(key) - 1];
+      saveConfig(this.cfg);
+      this.panel.syncInputs();
+      this.toast(this.cfg.transitionKind);
+      // Play it immediately so the variant can be judged the moment it is picked.
+      this.transition.trigger(performance.now());
     }
+  }
+
+  private toast(text: string): void {
+    this.hud.toast.textContent = text;
+    this.hud.toast.classList.remove('hidden');
+    window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(
+      () => this.hud.toast.classList.add('hidden'),
+      1100,
+    );
   }
 
   private applyPanelVisibility(): void {

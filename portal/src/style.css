@@ -76,6 +76,23 @@ html, body {
   z-index: 3;
 }
 
+.toast {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: ui-monospace, monospace;
+  z-index: 4;
+  pointer-events: none;
+}
+
 /* --- start screen --------------------------------------------------------- */
 
 .start {

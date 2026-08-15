@@ -88,7 +88,65 @@ Goal: prove hand tracking, polygon geometry, and the gesture state machine end-t
 - Draw the portal polygon filled with a **solid color** (green-screen stand-in).
 - Gesture state machine: each close→open cycle switches the fill color (white → red → blue → ...). This is a 1:1 stand-in for prompt switching.
 - Debug panel with live thresholds, landmark visualization toggle, FPS counter, state readout.
+- **Switch transition:** the portal collapses and reopens onto the fingertips whenever the dimension changes (Sne's idea, see §4.1).
 - **Exit criteria:** rectangle and bowtie cases render correctly; color reliably switches exactly once per close→open cycle across ~20 consecutive cycles; ≥24 fps on a laptop.
+
+#### 4.1 Switch transition: collapse and reopen
+
+When the dimension changes, the portal stops tracking the fingertips for a beat:
+it **collapses shut, holds, then reopens onto wherever the fingers now are**, tweened.
+
+Why this is worth building in Phase 0 rather than treating it as polish: §2.2's plan
+for hiding the model's transition frames is "swap while the hands are closed, so the
+closed hands occlude it." That works only as well as the performer's gesture does. A
+sloppy close, a fast cycle, or a hand that drifts leaves the swap visible. A forced
+collapse makes the mask **our** guarantee instead of the performer's — the portal is
+provably at zero visible area at the instant the swap lands, regardless of where the
+hands are. It also gives the switch a deliberate beat, which reads better on camera
+than an instant cut.
+
+That reframes the timing rule from §2.2. The trigger no longer performs the swap; it
+only *starts* the transition, and the swap happens at the collapse's low point. In
+Phase 1, `setPrompt` fires there, and the hold duration becomes the knob for however
+long Lucy needs to settle (§7's open question) — lengthen the hold, not the gesture.
+
+**The variable that actually matters** is not which shape it collapses to, but how the
+transition's duration compares to the hand motion underneath it. Hands open in roughly
+150–250ms. A reopen tween of about that length is invisible — the portal just tracks
+the fingers as it always did. The effect only reads if the portal is *decoupled*:
+noticeably slower than the hands (the portal lags, then catches up) or snappier
+(the portal is already open before the hands are). Tune duration first, pick the shape
+second.
+
+Variants to try (all implemented and selectable; the collapse target is the only
+difference between them):
+
+| Variant | Collapses to | Reads as |
+| --- | --- | --- |
+| `iris` | a point at the centre | camera shutter / lens |
+| `shutter` | a vertical slit on the midline | the hands themselves closing — physically congruent |
+| `eyelid` | index tips falling onto the thumbs | a blink; asymmetric, organic |
+| `twist` | a point, while rotating | a wormhole spinning shut |
+| `wipe` | one side edge, sweeping across | a sliding door / page turn |
+| `none` | — | instant swap; the control case to compare against |
+
+Timing and overshoot are sliders, not variants — a hard collapse with a slow bloom and
+a strong overshoot is a very different feel from a symmetric ease, using the same shape.
+
+Open questions to settle by looking at them:
+
+- Does the transition survive being filmed, or does it read as a glitch? The control
+  case (`none`) exists to answer this honestly — it is possible the cleanest result is
+  no animation at all, with the hands doing the masking as originally planned.
+- Should the reopen track the live fingertips (current behaviour) or reopen to the
+  fingertip positions *captured at collapse*? The former keeps the portal glued to the
+  hands; the latter would let the portal open somewhere the hands no longer are, which
+  might look broken or might look great.
+- Directional variants (`wipe`) could alternate direction per switch to imply moving
+  forward through a sequence of universes rather than shuffling at random.
+- A slice/glitch-shatter transition — the portal breaking into offset bands before
+  reassembling — is the most on-trend option for this aesthetic, but it needs a
+  different geometry representation than the 4-point polygon. Deferred, not dismissed.
 
 ### Phase 1 — MVP (Lucy integration)
 Goal: replace solid color with live Lucy stream.
@@ -101,10 +159,10 @@ Goal: replace solid color with live Lucy stream.
 ### Phase 1.5 — Recording & export
 - Record button → MediaRecorder on the composited canvas (+ mic).
 - Download file; countdown timer; basic UX polish (start screen, camera permission flow, mobile browser check).
-- **Performer HUD — hand skeleton as a dimension indicator** (Sne's idea, see §4.1).
+- **Performer HUD — hand skeleton as a dimension indicator** (Sne's idea, see §4.2).
 - **Exit criteria:** exported file contains the composite only — no skeleton, no HUD, no debug overlay.
 
-#### 4.1 Performer HUD: skeleton dimension indicator
+#### 4.2 Performer HUD: skeleton dimension indicator
 
 The problem this solves: while filming, the creator is looking at the screen from
 behind their own hands and can't easily tell *which* dimension is currently loaded,
@@ -160,8 +218,8 @@ Open questions:
 
 ## 5. Debug panel (build in Phase 0, keep behind a flag)
 
-- Landmark overlay on/off; portal polygon outline on/off. (In Phase 1.5 this overlay grows into the performer-facing skeleton indicator — see §4.1 — so build it as one component, not two.)
-- Sliders: EMA α, close threshold, open threshold, debounce frames, cooldown ms, sync delay Δ.
+- Landmark overlay on/off; portal polygon outline on/off. (In Phase 1.5 this overlay grows into the performer-facing skeleton indicator — see §4.2 — so build it as one component, not two.)
+- Sliders: EMA α, close threshold, open threshold, debounce frames, cooldown ms, sync delay Δ, transition collapse/hold/reopen/overshoot (§4.1).
 - Readouts: FPS, state machine state, normalized gap/area, Lucy connection state, generation seconds used.
 
 ## 6. Initial prompt library (iterate later)

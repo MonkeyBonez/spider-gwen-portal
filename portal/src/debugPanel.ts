@@ -5,12 +5,16 @@
  */
 
 import { resetConfig, saveConfig, type Config } from './config';
+import { TRANSITION_BLURBS, TRANSITION_KINDS } from './portalTransition';
 
 type NumKeys = {
   [K in keyof Config]: Config[K] extends number ? K : never;
 }[keyof Config];
 type BoolKeys = {
   [K in keyof Config]: Config[K] extends boolean ? K : never;
+}[keyof Config];
+type StringKeys = {
+  [K in keyof Config]: Config[K] extends string ? K : never;
 }[keyof Config];
 
 interface SliderSpec {
@@ -32,6 +36,11 @@ const SLIDERS: SliderSpec[] = [
   { key: 'minHandPresenceConfidence', label: 'Presence conf.', min: 0.1, max: 0.95, step: 0.05 },
   { key: 'lostResetMs', label: 'Lost reset', min: 0, max: 3000, step: 100 },
   { key: 'feather', label: 'Feather px', min: 0, max: 40, step: 1 },
+  { key: 'collapseMs', label: 'Collapse', min: 0, max: 600, step: 10 },
+  { key: 'holdMs', label: 'Hold shut', min: 0, max: 600, step: 10, hint: 'where the swap lands' },
+  { key: 'reopenMs', label: 'Reopen', min: 0, max: 900, step: 10 },
+  { key: 'reopenOvershoot', label: 'Reopen overshoot', min: 0, max: 3, step: 0.1, hint: '0 = no pop' },
+  { key: 'twistDegrees', label: 'Twist°', min: 0, max: 360, step: 15, hint: 'twist variant only' },
   { key: 'syncDelayMs', label: 'Sync Δ (Phase 1)', min: 0, max: 500, step: 10 },
 ];
 
@@ -89,22 +98,10 @@ export class DebugPanel {
     this.el.append(this.plot);
     this.el.append(el('div', 'hint plot-caption', 'gap over last ~8s · red = close · green = open'));
 
-    const advance = el('div', 'row');
-    advance.innerHTML = '<label>Advance on</label>';
-    const select = document.createElement('select');
-    for (const v of ['closed', 'opening'] as const) {
-      const o = document.createElement('option');
-      o.value = v;
-      o.textContent = v;
-      select.append(o);
-    }
-    select.value = cfg.advanceOn;
-    select.onchange = () => {
-      cfg.advanceOn = select.value as Config['advanceOn'];
-      saveConfig(cfg);
-    };
-    advance.append(select);
-    this.el.append(advance);
+    this.el.append(
+      this.select('advanceOn', 'Advance on', ['closed', 'opening']),
+      this.select('transitionKind', 'Switch transition', TRANSITION_KINDS, TRANSITION_BLURBS),
+    );
 
     for (const spec of SLIDERS) this.el.append(this.slider(spec));
     for (const t of TOGGLES) this.el.append(this.toggle(t.key, t.label));
@@ -124,6 +121,40 @@ export class DebugPanel {
   }
 
   private inputs: { sync: () => void }[] = [];
+
+  /** Generic <select> bound to a string-valued config key. */
+  private select<K extends StringKeys>(
+    key: K,
+    label: string,
+    options: readonly Config[K][],
+    blurbs?: Record<string, string>,
+  ): HTMLElement {
+    const row = el('div', 'row');
+    row.append(el('label', '', label));
+    const input = document.createElement('select');
+    for (const v of options) {
+      const o = document.createElement('option');
+      o.value = String(v);
+      o.textContent = String(v);
+      input.append(o);
+    }
+    input.value = String(this.cfg[key]);
+    const blurb = blurbs ? el('div', 'hint', blurbs[String(this.cfg[key])] ?? '') : null;
+    input.onchange = () => {
+      (this.cfg[key] as string) = input.value;
+      if (blurb) blurb.textContent = blurbs?.[input.value] ?? '';
+      saveConfig(this.cfg);
+    };
+    row.append(input);
+    if (blurb) row.append(blurb);
+    this.inputs.push({
+      sync: () => {
+        input.value = String(this.cfg[key]);
+        if (blurb) blurb.textContent = blurbs?.[input.value] ?? '';
+      },
+    });
+    return row;
+  }
 
   private slider(spec: SliderSpec): HTMLElement {
     const row = el('div', 'row slider');
@@ -167,7 +198,8 @@ export class DebugPanel {
     return row;
   }
 
-  private syncInputs(): void {
+  /** Re-read every control from the config (after a keyboard change or reset). */
+  syncInputs(): void {
     for (const i of this.inputs) i.sync();
   }
 

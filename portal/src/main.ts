@@ -10,6 +10,7 @@ app.innerHTML = `
         <span class="chip muted" id="hud-counter">0 switches</span>
       </div>
       <div class="status hidden" id="status"></div>
+      <div class="toast hidden" id="toast"></div>
     </div>
     <div class="start" id="start">
       <h1>Portal</h1>
@@ -19,7 +20,10 @@ app.innerHTML = `
         and close them. Each close→open cycle switches the dimension colour.
       </p>
       <button id="start-btn">Enable camera</button>
-      <p class="keys muted">D debug panel · L landmarks · Space manual switch · R reset counters</p>
+      <p class="keys muted">
+      D debug panel · L landmarks · Space manual switch · R reset counters<br />
+      1–6 pick the switch transition (none / iris / shutter / eyelid / twist / wipe)
+    </p>
       <p class="error hidden" id="error"></p>
     </div>
   </div>
@@ -38,6 +42,7 @@ startBtn.addEventListener('click', async () => {
     status: document.querySelector<HTMLElement>('#status')!,
     dimension: document.querySelector<HTMLElement>('#hud-dimension')!,
     counter: document.querySelector<HTMLElement>('#hud-counter')!,
+    toast: document.querySelector<HTMLElement>('#toast')!,
   });
 
   try {

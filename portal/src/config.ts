@@ -1,3 +1,5 @@
+import type { TransitionKind } from './portalTransition';
+
 /**
  * Tunable configuration for the portal POC.
  * Everything here is live-editable from the debug panel (§5) and persisted to
@@ -42,6 +44,18 @@ export interface Config {
   /** Portal edge feather in px. */
   feather: number;
 
+  // --- switch transition (§4.1) --------------------------------------------
+  /** Which collapse/reopen animation plays on a dimension switch. */
+  transitionKind: TransitionKind;
+  collapseMs: number;
+  /** Time held fully shut. The dimension swaps here; Phase 1 fires setPrompt here. */
+  holdMs: number;
+  reopenMs: number;
+  /** Back-easing strength on the reopen. 0 = plain ease-out. */
+  reopenOvershoot: number;
+  /** Peak rotation for the `twist` variant, degrees. */
+  twistDegrees: number;
+
   // --- sync (Phase 1 placeholder, §2.3) ------------------------------------
   /** Delay applied to the raw feed + mask to align with Lucy's stream. */
   syncDelayMs: number;
@@ -73,6 +87,13 @@ export const DEFAULT_CONFIG: Config = {
   lostResetMs: 1000,
 
   feather: 6,
+
+  transitionKind: 'shutter',
+  collapseMs: 110,
+  holdMs: 90,
+  reopenMs: 240,
+  reopenOvershoot: 1.1,
+  twistDegrees: 90,
 
   syncDelayMs: 0,
 

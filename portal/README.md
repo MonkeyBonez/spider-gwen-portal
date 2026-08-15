@@ -23,8 +23,9 @@ HTTP; use a tunnel (`ngrok http 5173`) or `vite --https` for that.
 | --- | --- |
 | `D` | toggle the debug panel |
 | `L` | toggle the landmark overlay |
-| `Space` | advance the dimension manually |
+| `Space` | advance the dimension manually (plays the full transition) |
 | `R` | reset the switch counter and state machine |
+| `1`–`6` | pick the switch transition and play it immediately |
 
 ## Layout
 
@@ -34,10 +35,12 @@ HTTP; use a tunnel (`ngrok http 5173`) or `vite --https` for that.
 | `src/geometry.ts` | portal polygon, normalised `gap`/`area`, EMA smoothing |
 | `src/triggers/types.ts` | `GestureTrigger` interface — swap in alternative strategies |
 | `src/triggers/closeOpenTrigger.ts` | trigger v1, the PRD §2.2 state machine |
+| `src/portalTransition.ts` | collapse/reopen animation on a switch (PRD §4.1) |
 | `src/renderer.ts` | canvas compositing (layer + even-odd mask + feather) |
 | `src/debugPanel.ts` | live thresholds, readouts, rolling gap plot |
 | `src/dimensions.ts` | colour + prompt per dimension (prompts unused until Phase 1) |
-| `public/verify.html` | standalone geometry harness — drag the 4 points |
+| `/transitions.html` | all six transitions side by side on synthetic hands |
+| `/verify.html` | standalone geometry harness — drag the 4 points |
 
 ## Verifying the exit criteria
 
@@ -68,9 +71,29 @@ persist to localStorage; "Reset settings" restores the defaults.
 pure threshold crossing. Worth A/B-ing — the velocity gate rejects slow drifts but
 can miss very gentle closes.
 
-`Advance on` picks when the switch fires: `closed` (default) swaps while the hands
-are shut, which is what Phase 1 wants so Lucy's transition frames stay hidden;
-`opening` fires as the hands part, matching the literal wording of PRD §2.2.
+`Advance on` picks when the trigger fires: `closed` (default) starts the transition
+while the hands are shut, which is what Phase 1 wants so Lucy's transition frames
+stay hidden; `opening` fires as the hands part, matching the literal wording of
+PRD §2.2.
+
+## Switch transitions (PRD §4.1)
+
+On a switch the portal collapses, holds shut, and reopens onto the live fingertips.
+The dimension changes at the low point, so it is never seen mid-flight — the mask is
+guaranteed by the animation rather than by how well the hands happened to occlude
+the portal.
+
+Compare them at **`/transitions.html`**: all six run side by side on identical
+synthetic hands, so the only difference you see is the transition itself. The dashed
+outline marks where the fingertips are; the `hand speed` slider is the important one,
+because it changes how much of the transition survives the hands moving underneath it.
+
+In the live app, `1`–`6` switch variant and play it instantly, so you can compare
+back to back with your hands held still.
+
+The timing sliders matter more than the variant choice — a reopen tween close to your
+hand-opening speed (~150–250ms) is nearly invisible. Push it slower for a portal that
+lags and catches up, or faster for one that beats the hands open.
 
 ## Notes for Phase 1
 
