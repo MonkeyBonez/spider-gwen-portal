@@ -5,6 +5,7 @@
  */
 
 import { resetConfig, saveConfig, type Config } from './config';
+import { CONTACT_BLURBS, CONTACT_MODES } from './geometry';
 import { TRANSITION_BLURBS, TRANSITION_KINDS } from './portalTransition';
 
 type NumKeys = {
@@ -99,6 +100,7 @@ export class DebugPanel {
     this.el.append(el('div', 'hint plot-caption', 'gap over last ~8s · red = close · green = open'));
 
     this.el.append(
+      this.select('contactMode', 'Contact mode', CONTACT_MODES, CONTACT_BLURBS),
       this.select('advanceOn', 'Advance on', ['closed', 'opening']),
       this.select('transitionKind', 'Switch transition', TRANSITION_KINDS, TRANSITION_BLURBS),
     );

@@ -9,6 +9,8 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  CONTACT_BLURBS,
+  CONTACT_MODES,
   normalizedGap,
   polygonArea,
   polygonOrder,
@@ -101,7 +103,103 @@ describe('normalised signals', () => {
   });
 
   it('gap is the mean of the index and thumb separations over hand size', () => {
-    expect(normalizedGap(LEVEL)).toBeCloseTo(200 / 100);
+    expect(normalizedGap(LEVEL, 'strict')).toBeCloseTo(200 / 100);
+  });
+});
+
+describe('contact modes (PRD §2.2.1)', () => {
+  /**
+   * The case that motivated this: the left hand is rotated so its index meets
+   * the *right thumb* and its thumb meets the right index. The hands are shut,
+   * but index↔index and thumb↔thumb are both still far apart.
+   */
+  const CROSSED_SHUT: PortalPoints = {
+    lIndex: { x: 99, y: 200 }, // touching rThumb
+    rIndex: { x: 100, y: 100 },
+    rThumb: { x: 101, y: 200 },
+    lThumb: { x: 100, y: 99 }, // touching rIndex
+    handSize: 100,
+  };
+
+  it('strict mode misses a crossed close — the bug being fixed', () => {
+    expect(normalizedGap(CROSSED_SHUT, 'strict')).toBeGreaterThan(0.5);
+  });
+
+  it('paired mode sees the crossed close', () => {
+    expect(normalizedGap(CROSSED_SHUT, 'paired')).toBeLessThan(0.05);
+  });
+
+  it('any mode sees the crossed close', () => {
+    expect(normalizedGap(CROSSED_SHUT, 'any')).toBeLessThan(0.05);
+  });
+
+  it('every mode agrees the portal is shut when all four points meet', () => {
+    const shut: PortalPoints = {
+      lIndex: { x: 100, y: 100 },
+      rIndex: { x: 101, y: 100 },
+      rThumb: { x: 101, y: 101 },
+      lThumb: { x: 100, y: 101 },
+      handSize: 100,
+    };
+    for (const mode of CONTACT_MODES) {
+      expect(normalizedGap(shut, mode)).toBeLessThan(0.05);
+    }
+  });
+
+  /**
+   * The hinge: thumbs stay pressed together as a pivot while the index fingers
+   * swing wide open — a plausible way to perform the gesture. `any` reports this
+   * as shut, so the state machine would never see an open and would stop firing.
+   * `paired` correctly reports it as open. This is why `paired` is the default.
+   */
+  const THUMB_HINGE_OPEN: PortalPoints = {
+    lIndex: { x: 20, y: 20 },
+    rIndex: { x: 280, y: 20 },
+    rThumb: { x: 151, y: 200 },
+    lThumb: { x: 150, y: 200 }, // thumbs still touching
+    handSize: 100,
+  };
+
+  it('any mode reads a wide thumb-pivot hinge as shut — the documented caveat', () => {
+    expect(normalizedGap(THUMB_HINGE_OPEN, 'any')).toBeLessThan(0.05);
+  });
+
+  it('paired mode correctly reads the thumb-pivot hinge as open', () => {
+    expect(normalizedGap(THUMB_HINGE_OPEN, 'paired')).toBeGreaterThan(0.5);
+  });
+
+  it('paired never reports more than strict', () => {
+    // It takes the better of two pairings, one of which is strict's.
+    for (const p of [LEVEL, ROTATED, CROSSED_SHUT, THUMB_HINGE_OPEN]) {
+      expect(normalizedGap(p, 'paired')).toBeLessThanOrEqual(normalizedGap(p, 'strict') + 1e-9);
+    }
+  });
+
+  it('any never reports more than paired', () => {
+    for (const p of [LEVEL, ROTATED, CROSSED_SHUT, THUMB_HINGE_OPEN]) {
+      expect(normalizedGap(p, 'any')).toBeLessThanOrEqual(normalizedGap(p, 'paired') + 1e-9);
+    }
+  });
+
+  it('ignores same-hand contact', () => {
+    // A pinched left hand (own index touching own thumb) with the hands far
+    // apart must not read as closed in any mode.
+    const pinchedButApart: PortalPoints = {
+      lIndex: { x: 20, y: 100 },
+      lThumb: { x: 21, y: 100 },
+      rIndex: { x: 400, y: 100 },
+      rThumb: { x: 401, y: 100 },
+      handSize: 100,
+    };
+    for (const mode of CONTACT_MODES) {
+      expect(normalizedGap(pinchedButApart, mode)).toBeGreaterThan(1);
+    }
+  });
+
+  it('has a blurb for every mode', () => {
+    for (const mode of CONTACT_MODES) {
+      expect(CONTACT_BLURBS[mode].length).toBeGreaterThan(10);
+    }
   });
 });
 

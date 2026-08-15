@@ -1,4 +1,5 @@
-import type { TransitionKind } from './portalTransition';
+import { CONTACT_MODES, type ContactMode } from './geometry';
+import { TRANSITION_KINDS, type TransitionKind } from './portalTransition';
 
 /**
  * Tunable configuration for the portal POC.
@@ -25,6 +26,8 @@ export interface Config {
   swapHandedness: boolean;
 
   // --- gesture trigger ------------------------------------------------------
+  /** Which cross-hand contacts count as closing the portal (§2.2.1). */
+  contactMode: ContactMode;
   /** Normalised gap below which the portal counts as "touching"/closed. */
   closeThreshold: number;
   /** Normalised gap above which the portal counts as re-opened (hysteresis). */
@@ -78,6 +81,7 @@ export const DEFAULT_CONFIG: Config = {
   emaAlpha: 0.5,
   swapHandedness: false,
 
+  contactMode: 'paired',
   closeThreshold: 0.35,
   openThreshold: 0.55,
   debounceFrames: 3,
@@ -111,6 +115,14 @@ export function loadConfig(): Config {
     if (raw) Object.assign(cfg, JSON.parse(raw) as Partial<Config>);
   } catch {
     /* corrupt or unavailable storage — fall back to defaults */
+  }
+  // Stored values can name a variant that has since been cut, which would leave
+  // the app rendering nothing. Fall back rather than trusting localStorage.
+  if (!TRANSITION_KINDS.includes(cfg.transitionKind)) {
+    cfg.transitionKind = DEFAULT_CONFIG.transitionKind;
+  }
+  if (!CONTACT_MODES.includes(cfg.contactMode)) {
+    cfg.contactMode = DEFAULT_CONFIG.contactMode;
   }
   return cfg;
 }

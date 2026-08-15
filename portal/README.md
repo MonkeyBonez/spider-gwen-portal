@@ -29,7 +29,7 @@ HTTP, so it needs a tunnel (`ngrok http 5173`) or an HTTPS dev server.
 | `L` | toggle the landmark overlay |
 | `Space` | advance the dimension manually (plays the full transition) |
 | `R` | reset the switch counter and state machine |
-| `1`–`6` | pick the switch transition and play it immediately |
+| `1`–`4` | pick the switch transition and play it immediately |
 
 ## Layout
 
@@ -75,6 +75,25 @@ persist to localStorage; "Reset settings" restores the defaults.
 pure threshold crossing. Worth A/B-ing — the velocity gate rejects slow drifts but
 can miss very gentle closes.
 
+### Contact mode (PRD §2.2.1)
+
+Which cross-hand contacts count as closing the portal. Rotate one hand and its index
+tip meets the *other* hand's thumb, so the original index↔index / thumb↔thumb rule
+misses the close entirely.
+
+- **`paired`** (default) — the better of the parallel or crossed pairing.
+  Rotation-proof, and still needs both sides shut.
+- **`any`** — the single closest cross-hand pair. Most forgiving. **Caveat:** if you
+  perform the gesture with your thumbs pressed together as a pivot and swing your
+  index fingers open, `any` reads the portal as shut for the whole cycle and
+  switching stops. `paired` handles that correctly.
+- **`strict`** — the original rule, kept only as a baseline.
+
+The three are on different scales (`any` takes a minimum where `strict` takes a
+mean), so **retune the close/open thresholds after changing mode** — don't carry the
+numbers across. The panel readout `gap s/p/a` shows all three at once, so you can
+watch how each responds to your actual hands before committing.
+
 `Advance on` picks when the trigger fires: `closed` (default) starts the transition
 while the hands are shut, which is what Phase 1 wants so Lucy's transition frames
 stay hidden; `opening` fires as the hands part, matching the literal wording of
@@ -87,7 +106,11 @@ The dimension changes at the low point, so it is never seen mid-flight — the m
 guaranteed by the animation rather than by how well the hands happened to occlude
 the portal.
 
-Compare them at **`/transitions.html`**: all six run side by side on identical
+Shortlisted to `shutter` (default), `iris` and `twist`, with `none` as the control —
+final pick deferred to the MVP, when the hold can be tuned against Lucy's real settle
+time instead of a flat colour.
+
+Compare them at **`/transitions.html`**: they run side by side on identical
 synthetic hands, so the only difference you see is the transition itself. The dashed
 outline marks where the fingertips are; the `hand speed` slider is the important one,
 because it changes how much of the transition survives the hands moving underneath it.

@@ -159,16 +159,15 @@ describe('applyTransition geometry', () => {
     expect(shaped.lThumb.y).toBeCloseTo(PORTAL.lThumb.y);
   });
 
-  it('eyelid drops the index tips onto the thumbs and holds the thumb line', () => {
-    const shaped = applyTransition(PORTAL, collapsed, 'eyelid');
-    expect(shaped.lIndex).toEqual(PORTAL.lThumb);
-    expect(shaped.lThumb).toEqual(PORTAL.lThumb);
+  it('iris collapses every point onto the centre', () => {
+    const shaped = applyTransition(PORTAL, collapsed, 'iris');
+    expect(shaped.lIndex).toEqual(shaped.rThumb);
+    expect(shaped.lIndex.x).toBeCloseTo(200);
+    expect(shaped.lIndex.y).toBeCloseTo(200);
   });
 
-  it('wipe collapses onto the right-hand edge', () => {
-    const shaped = applyTransition(PORTAL, collapsed, 'wipe');
-    expect(shaped.lIndex.x).toBeCloseTo(PORTAL.rIndex.x);
-    expect(shaped.rIndex.x).toBeCloseTo(PORTAL.rIndex.x);
+  it('is shortlisted to none/iris/shutter/twist', () => {
+    expect(TRANSITION_KINDS).toEqual(['none', 'iris', 'shutter', 'twist']);
   });
 
   it('twist rotates the portal while it is partly open', () => {

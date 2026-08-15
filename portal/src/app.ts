@@ -6,6 +6,7 @@
 import { loadConfig, saveConfig, type Config } from './config';
 import { DIMENSIONS } from './dimensions';
 import {
+  CONTACT_MODES,
   normalizedArea,
   normalizedGap,
   smoothPortal,
@@ -134,7 +135,9 @@ export class App {
     }
 
     const handsPresent = hands.portal !== null;
-    const gap = this.smoothed ? normalizedGap(this.smoothed) : this.prevGap;
+    const gap = this.smoothed
+      ? normalizedGap(this.smoothed, this.cfg.contactMode)
+      : this.prevGap;
     const area = this.smoothed ? normalizedArea(this.smoothed) : 0;
 
     if (handsPresent && dt > 0) {
@@ -211,6 +214,11 @@ export class App {
       extra: {
         trigger: this.trigger.name,
         ...this.trigger.debug(),
+        // All three contact modes at once, so picking one is observation rather
+        // than guesswork — they are on different scales (§2.2.1).
+        'gap s/p/a': this.smoothed
+          ? CONTACT_MODES.map((m) => normalizedGap(this.smoothed!, m).toFixed(2)).join(' / ')
+          : '—',
         transition: transition.phase,
         closure: transition.closure.toFixed(2),
       },

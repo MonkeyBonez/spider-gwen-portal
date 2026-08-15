@@ -68,11 +68,62 @@ export function polygonArea(pts: Pt[]): number {
 }
 
 /**
- * `gap` = mean of the index-to-index and thumb-to-thumb distances, normalised by
- * hand size (PRD §2.2).
+ * How the close is detected (PRD §2.2.1).
+ *
+ * `strict`  index↔index and thumb↔thumb only — the original §2.2 rule. Misses the
+ *           close entirely if a hand is rotated enough that the fingers meet
+ *           their opposite number.
+ * `paired`  the better of the two ways the hands can correspond: parallel
+ *           (index↔index, thumb↔thumb) or crossed (index↔thumb, thumb↔index).
+ *           Rotation-invariant, but still needs *both* pairs closed, so the
+ *           portal has to actually be shut. Default.
+ * `any`     the single closest pair of points across the two hands. The literal
+ *           "any two points from opposite hands touching" — most permissive, and
+ *           see the hinge caveat below.
  */
-export function normalizedGap(p: PortalPoints): number {
-  const g = (dist(p.lIndex, p.rIndex) + dist(p.lThumb, p.rThumb)) / 2;
+export type ContactMode = 'strict' | 'paired' | 'any';
+
+export const CONTACT_MODES: ContactMode[] = ['strict', 'paired', 'any'];
+
+export const CONTACT_BLURBS: Record<ContactMode, string> = {
+  strict: 'Index↔index and thumb↔thumb only. Breaks if a hand rotates.',
+  paired: 'Best of the parallel or crossed pairing. Rotation-proof, still needs the portal shut.',
+  any: 'Closest single cross-hand pair. Most forgiving — but a thumb-pivot hinge never reads as open.',
+};
+
+/**
+ * `gap` = separation between the hands, normalised by hand size so it is
+ * camera-distance invariant (PRD §2.2).
+ *
+ * Note that the three modes are on different scales — `any` reports roughly half
+ * what `strict` does for the same pose, because it takes a minimum rather than a
+ * mean. The close/open thresholds have to be retuned when the mode changes.
+ */
+export function normalizedGap(p: PortalPoints, mode: ContactMode = 'paired'): number {
+  const parallel = (dist(p.lIndex, p.rIndex) + dist(p.lThumb, p.rThumb)) / 2;
+
+  let g: number;
+  switch (mode) {
+    case 'strict':
+      g = parallel;
+      break;
+    case 'any':
+      // Every cross-hand pair among the portal points. Same-hand pairs are
+      // excluded: index-to-own-thumb says nothing about the hands meeting.
+      g = Math.min(
+        dist(p.lIndex, p.rIndex),
+        dist(p.lIndex, p.rThumb),
+        dist(p.lThumb, p.rIndex),
+        dist(p.lThumb, p.rThumb),
+      );
+      break;
+    case 'paired':
+    default: {
+      const crossed = (dist(p.lIndex, p.rThumb) + dist(p.lThumb, p.rIndex)) / 2;
+      g = Math.min(parallel, crossed);
+      break;
+    }
+  }
   return p.handSize > 0 ? g / p.handSize : 0;
 }
 

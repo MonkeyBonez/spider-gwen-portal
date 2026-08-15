@@ -22,25 +22,21 @@
 
 import type { PortalPoints, Pt } from './geometry';
 
-export type TransitionKind = 'none' | 'iris' | 'shutter' | 'eyelid' | 'twist' | 'wipe';
+/**
+ * Shortlisted down to three, to be decided on feel during the MVP once the hold
+ * can be tuned against Lucy's real settle time. `none` is not a fourth variant —
+ * it is the off switch, kept as the control case.
+ */
+export type TransitionKind = 'none' | 'iris' | 'shutter' | 'twist';
 
-export const TRANSITION_KINDS: TransitionKind[] = [
-  'none',
-  'iris',
-  'shutter',
-  'eyelid',
-  'twist',
-  'wipe',
-];
+export const TRANSITION_KINDS: TransitionKind[] = ['none', 'iris', 'shutter', 'twist'];
 
 /** One-line pitch per variant, surfaced in the debug panel. */
 export const TRANSITION_BLURBS: Record<TransitionKind, string> = {
-  none: 'Instant swap, no animation (Phase 0 baseline).',
+  none: 'Instant swap, no animation. The control case.',
   iris: 'Shrinks to a point at the centre and blooms back. Camera-shutter feel.',
   shutter: 'Squeezes horizontally to a vertical slit — matches how the hands really close.',
-  eyelid: 'Index tips fall to the thumbs, then lift. Reads as a blink.',
   twist: 'Iris plus a rotation, so the portal spins shut and unwinds.',
-  wipe: 'Collapses sideways onto one edge and sweeps back open.',
 };
 
 export interface TransitionSpec {
@@ -143,12 +139,6 @@ function anchors(kind: TransitionKind, p: PortalPoints, centre: Pt): Pt[] {
         { x: centre.x, y: p.rThumb.y },
         { x: centre.x, y: p.lThumb.y },
       ];
-    case 'eyelid':
-      // Index tips drop onto their own thumb; the thumb line holds still.
-      return [p.lThumb, p.rThumb, p.rThumb, p.lThumb];
-    case 'wipe':
-      // Left points slide onto their right counterparts — closes to one edge.
-      return [p.rIndex, p.rIndex, p.rThumb, p.rThumb];
     case 'iris':
     case 'twist':
     case 'none':

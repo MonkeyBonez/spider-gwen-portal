@@ -45,8 +45,8 @@ The prompt (dimension) advances on each close→open cycle. Proposed state machi
 States: `OPEN → CLOSING → CLOSED → OPENING → OPEN`
 
 Signals per frame:
-- `gap` = mean distance between (L-index, R-index) and (L-thumb, R-thumb), normalized by hand size (e.g. wrist-to-middle-MCP distance) so it's camera-distance invariant.
-- `area` = polygon area, similarly normalized.
+- `gap` = separation between the two hands, normalized by hand size (e.g. wrist-to-middle-MCP distance) so it's camera-distance invariant. **How that separation is measured is configurable — see §2.2.1, which supersedes the original "mean of index↔index and thumb↔thumb" definition.**
+- `area` = polygon area, similarly normalized. **Note:** this is a weak signal and must not be the primary trigger input — for a rotated hand the polygon is a bowtie whose two lobes have opposite winding, so the shoelace area cancels to ~0 while the portal is plainly open. Keep it as a readout.
 - Velocity of `gap` (moving together vs. apart).
 
 Proposed logic v1 (Sne's idea):
@@ -57,6 +57,40 @@ Proposed logic v1 (Sne's idea):
 Design intent: the prompt swap should happen while the portal is closed/near-closed so the transition frames of the AI model are hidden behind the closed hands. Lucy 2.5 supports changing the prompt mid-stream on a live connection (`setPrompt` / `realtimeClient.set({prompt})`) with near-instant adaptation — so we fire `setPrompt` on the CLOSED flag, and by the time hands open, the new dimension has settled.
 
 **Thresholds are guesses. Build a debug panel** (see §5) to tune them live.
+
+#### 2.2.1 Contact detection: which fingers count as "touching"
+
+The original rule — index↔index **and** thumb↔thumb — assumes both hands stay level
+and identically oriented. They don't. Rotate one hand and its index tip ends up
+meeting the *other hand's thumb*; the hands are pressed together and the portal is
+visibly shut, but both of the measured distances are still wide, so the close is
+never detected and the dimension never advances. **Contact must be detected between
+any two points on opposite hands, not just matching landmarks.**
+
+Same-hand pairs are always excluded — an index touching its own thumb is a pinch,
+and says nothing about whether the two hands have met.
+
+Three modes, selectable at runtime so they can be compared on real hands:
+
+| Mode | `gap` is | Behaviour |
+| --- | --- | --- |
+| `strict` | mean of index↔index and thumb↔thumb | The original rule. Kept only as a baseline to compare against; it has the bug described above. |
+| `paired` | the smaller of the **parallel** pairing (index↔index, thumb↔thumb) and the **crossed** pairing (index↔thumb, thumb↔index) | **Default.** Rotation-invariant, but still a mean over two pairs, so both sides of the portal have to be closed for it to read as shut. |
+| `any` | the single closest cross-hand pair | The literal "any two points touching". Most forgiving; carries the hinge caveat below. |
+
+**The hinge caveat, which is why `any` is not the default.** A natural way to perform
+this gesture is to keep the thumbs pressed together as a pivot and swing the index
+fingers open like a book. Under `any`, the touching thumbs hold `gap` near zero for
+the entire cycle — the portal never reads as open, so the state machine never
+re-arms and switching stops dead. `paired` handles this correctly because it needs
+both pairs closed. If `any` is chosen anyway, the thumb-pivot performance has to be
+ruled out during testing.
+
+**The three modes are on different scales.** `any` takes a minimum where `strict`
+takes a mean, so it reports roughly half the value for the same pose. The close and
+open thresholds must be retuned whenever the mode changes — do not carry numbers
+across. The debug panel shows all three values simultaneously (`gap s/p/a`) so the
+choice can be made by observation.
 
 ### 2.3 Sync / latency alignment
 
@@ -146,17 +180,17 @@ noticeably slower than the hands (the portal lags, then catches up) or snappier
 (the portal is already open before the hands are). Tune duration first, pick the shape
 second.
 
-Variants to try (all implemented and selectable; the collapse target is the only
-difference between them):
+**Shortlisted to three.** A wider set was prototyped (an eyelid drop and a sideways
+wipe); those are cut. The remaining three stay in and the choice between them is
+**deferred until the MVP**, decided on feel once the hold can be tuned against Lucy's
+real settle time rather than against a flat colour fill:
 
 | Variant | Collapses to | Reads as |
 | --- | --- | --- |
-| `iris` | a point at the centre | camera shutter / lens |
-| `shutter` | a vertical slit on the midline | the hands themselves closing — physically congruent |
-| `eyelid` | index tips falling onto the thumbs | a blink; asymmetric, organic |
+| `shutter` | a vertical slit on the midline | the hands themselves closing — physically congruent. Current default. |
+| `iris` | a point at the centre | camera shutter / lens; mechanical rather than bodily |
 | `twist` | a point, while rotating | a wormhole spinning shut |
-| `wipe` | one side edge, sweeping across | a sliding door / page turn |
-| `none` | — | instant swap; the control case to compare against |
+| `none` | — | not a fourth variant — the off switch, kept as the control case |
 
 Timing and overshoot are sliders, not variants — a hard collapse with a slow bloom and
 a strong overshoot is a very different feel from a symmetric ease, using the same shape.
@@ -170,8 +204,6 @@ Open questions to settle by looking at them:
   fingertip positions *captured at collapse*? The former keeps the portal glued to the
   hands; the latter would let the portal open somewhere the hands no longer are, which
   might look broken or might look great.
-- Directional variants (`wipe`) could alternate direction per switch to imply moving
-  forward through a sequence of universes rather than shuffling at random.
 - A slice/glitch-shatter transition — the portal breaking into offset bands before
   reassembling — is the most on-trend option for this aesthetic, but it needs a
   different geometry representation than the 4-point polygon. Deferred, not dismissed.
@@ -247,8 +279,9 @@ Open questions:
 ## 5. Debug panel (build in Phase 0, keep behind a flag)
 
 - Landmark overlay on/off; portal polygon outline on/off. (In Phase 1.5 this overlay grows into the performer-facing skeleton indicator — see §4.2 — so build it as one component, not two.)
+- Selectors: contact mode (§2.2.1), advance-on (closed/opening), switch transition (§4.1).
 - Sliders: EMA α, close threshold, open threshold, debounce frames, cooldown ms, sync delay Δ, transition collapse/hold/reopen/overshoot (§4.1).
-- Readouts: FPS, state machine state, normalized gap/area, Lucy connection state, generation seconds used.
+- Readouts: FPS, state machine state, normalized gap/area, `gap` under all three contact modes at once, Lucy connection state, generation seconds used.
 
 ## 6. Initial prompt library (iterate later)
 
