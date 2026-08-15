@@ -1,6 +1,6 @@
 # Portal — Real-Time Spider-Verse Dimension Portal (PRD + Build Context)
 
-**Status:** Pre-build. This document is the full context for the project. Read it entirely before writing code.
+**Status:** Phase 0 POC built (`portal/`). This document is the full context for the project. Read it entirely before writing code.
 **Owner:** Sne
 **Last updated:** 2026-08-15
 
@@ -101,6 +101,55 @@ Goal: replace solid color with live Lucy stream.
 ### Phase 1.5 — Recording & export
 - Record button → MediaRecorder on the composited canvas (+ mic).
 - Download file; countdown timer; basic UX polish (start screen, camera permission flow, mobile browser check).
+- **Performer HUD — hand skeleton as a dimension indicator** (Sne's idea, see §4.1).
+- **Exit criteria:** exported file contains the composite only — no skeleton, no HUD, no debug overlay.
+
+#### 4.1 Performer HUD: skeleton dimension indicator
+
+The problem this solves: while filming, the creator is looking at the screen from
+behind their own hands and can't easily tell *which* dimension is currently loaded,
+or confirm that a close→open cycle actually registered a switch. Right now the only
+feedback is the portal contents themselves, which are occluded at exactly the moment
+the switch fires.
+
+So: draw the MediaPipe hand skeleton (the 21 landmarks and their connections, as
+vectors) over the live preview, and **recolour the skeleton per dimension**. When the
+state machine advances, the skeleton snaps to the new dimension's accent colour. That
+reads as the two hands being "wired into" whichever universe is currently showing
+through the portal — the hands are the frame of the portal, so colouring them is a
+natural signal that the portal's contents changed.
+
+Requirements:
+
+- **Preview-only. It must never appear in the exported video.** This is a hard
+  constraint and it dictates the architecture: the composite canvas that
+  `captureStream()` records must contain *only* the raw feed + portal. The skeleton
+  goes on a **second, transparent canvas layered over the first via CSS** — same
+  dimensions, same coordinate space, absolutely positioned on top, never captured.
+  Do not draw the skeleton into the composite canvas and try to erase it before
+  recording; keep the two surfaces separate from the start.
+- One accent colour per dimension, defined alongside its prompt in the prompt
+  library so the two can never drift out of sync.
+- Colour change should be legible at a glance but not distracting: consider a brief
+  brighter flash or a short thickness pulse on the switch frame, settling to a
+  steady, semi-transparent line. Tune opacity so it doesn't fight the portal.
+- Toggleable, and default-on during recording setup. Some creators will want a clean
+  preview; some will want it while rehearsing and off for the real take.
+- This is a superset of the Phase 0 debug landmark overlay — fold that overlay into
+  this component rather than maintaining two skeleton renderers. The debug version
+  keeps its per-hand handedness/confidence labels; the performer version is just the
+  coloured vectors.
+
+Open questions:
+
+- Does the skeleton read better on both hands, or only on the 4 portal points
+  (thumb tips + index tips) plus the polygon edge? The full 21-point skeleton may be
+  visually noisy against a busy transformed portal — prototype both.
+- Worth also flashing the portal's *outline* in the dimension colour for one beat on
+  switch? Cheaper than the full skeleton and might be enough on its own.
+- If we later want this baked into some exports (it might read as an intentional
+  stylistic effect rather than a debug affordance), it becomes a per-export toggle:
+  record from a third canvas that composites both layers. Note only; not now.
 
 ### Phase 2 — BYO key & cost model
 - User pastes their own Decart API key (stored in localStorage only, never sent to any server of ours). Their usage bills to their account.
@@ -111,7 +160,7 @@ Goal: replace solid color with live Lucy stream.
 
 ## 5. Debug panel (build in Phase 0, keep behind a flag)
 
-- Landmark overlay on/off; portal polygon outline on/off.
+- Landmark overlay on/off; portal polygon outline on/off. (In Phase 1.5 this overlay grows into the performer-facing skeleton indicator — see §4.1 — so build it as one component, not two.)
 - Sliders: EMA α, close threshold, open threshold, debounce frames, cooldown ms, sync delay Δ.
 - Readouts: FPS, state machine state, normalized gap/area, Lucy connection state, generation seconds used.
 
