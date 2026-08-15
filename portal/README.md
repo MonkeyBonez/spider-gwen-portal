@@ -13,9 +13,13 @@ npm run dev     # http://localhost:5173
 npm test        # state machine + geometry unit tests
 ```
 
-Camera access needs a secure context — `localhost` works. To test on a phone,
-`npm run dev` prints a LAN URL, but iOS Safari will refuse the camera over plain
-HTTP; use a tunnel (`ngrok http 5173`) or `vite --https` for that.
+Camera access needs a secure context — `localhost` covers desktop dev.
+
+Target is **desktop browsers, Chrome on macOS first** (PRD §3.1). Safari on macOS is
+worth checking before any demo, since its canvas `filter` and `MediaRecorder` support
+diverge most. Mobile is a P2 bonus and shouldn't shape anything here; if you do want
+to poke at it, `npm run dev` prints a LAN URL, but phones refuse the camera over plain
+HTTP, so it needs a tunnel (`ngrok http 5173`) or an HTTPS dev server.
 
 ## Controls
 

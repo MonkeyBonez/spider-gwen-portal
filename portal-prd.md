@@ -78,6 +78,34 @@ Design intent: the prompt swap should happen while the portal is closed/near-clo
 - **Compositing:** `<canvas>` (2D context is likely sufficient; WebGL if perf demands). Per displayed frame: draw raw video → set clip path to portal polygon (even-odd) → draw Lucy video inside clip. Feathered edge via shadow/blur trick or offscreen mask canvas.
 - **Recording (MVP 1.5):** `canvas.captureStream(30)` → `MediaRecorder` → webm (mp4 via muxer lib if needed for social apps). Include mic audio track optionally.
 
+### 3.1 Target platforms
+
+**Desktop/laptop browsers are the priority. Mobile web is a hoped-for bonus, not a
+requirement, and must never drive a design decision.**
+
+| Tier | Platform | Commitment |
+| --- | --- | --- |
+| **P0** | Chrome on macOS (dev machine — Apple silicon) | Must work. Every exit criterion is measured here. |
+| **P1** | Safari on macOS | Should work. Verify before any demo, since Safari's canvas/WebRTC behaviour diverges most. |
+| **P1** | Chrome/Edge on Windows | Should work. No hardware here to test on; treat as unverified until someone runs it. |
+| **P2** | Mobile Safari (iOS), Chrome (Android) | Try it, report what happens, fix only what is cheap. Failing here does not block a release. |
+
+What this means in practice:
+
+- Performance targets, resolution choices, and the canonical canvas size (§7) are set
+  by what a laptop can sustain. Do not down-res or simplify the desktop path to make a
+  phone happy.
+- Do not build mobile-specific UI, orientation handling, or touch affordances until
+  desktop is finished and someone asks for them.
+- `getUserMedia` needs a secure context everywhere, so `localhost` covers desktop dev.
+  Testing on a phone needs a tunnel or an HTTPS dev server — that is a real setup cost
+  and another reason to keep mobile out of the inner loop.
+- If mobile turns out to work for free, good. If it needs its own rendering path, that
+  is a separate project, not a Phase 1.5 task.
+
+Not targeted: legacy browsers, in-app webviews (Instagram/TikTok browsers), Firefox on
+any platform (untested, no commitment either way).
+
 ---
 
 ## 4. Phased plan
@@ -89,7 +117,7 @@ Goal: prove hand tracking, polygon geometry, and the gesture state machine end-t
 - Gesture state machine: each close→open cycle switches the fill color (white → red → blue → ...). This is a 1:1 stand-in for prompt switching.
 - Debug panel with live thresholds, landmark visualization toggle, FPS counter, state readout.
 - **Switch transition:** the portal collapses and reopens onto the fingertips whenever the dimension changes (Sne's idea, see §4.1).
-- **Exit criteria:** rectangle and bowtie cases render correctly; color reliably switches exactly once per close→open cycle across ~20 consecutive cycles; ≥24 fps on a laptop.
+- **Exit criteria:** rectangle and bowtie cases render correctly; color reliably switches exactly once per close→open cycle across ~20 consecutive cycles; ≥24 fps in Chrome on the macOS dev laptop (the P0 target, §3.1).
 
 #### 4.1 Switch transition: collapse and reopen
 
@@ -158,7 +186,7 @@ Goal: replace solid color with live Lucy stream.
 
 ### Phase 1.5 — Recording & export
 - Record button → MediaRecorder on the composited canvas (+ mic).
-- Download file; countdown timer; basic UX polish (start screen, camera permission flow, mobile browser check).
+- Download file; countdown timer; basic UX polish (start screen, camera permission flow). Verify export works in Safari on macOS, not just Chrome — codec support differs. An unsupported-browser notice is enough for anything outside the §3.1 tiers; no mobile-specific work here.
 - **Performer HUD — hand skeleton as a dimension indicator** (Sne's idea, see §4.2).
 - **Exit criteria:** exported file contains the composite only — no skeleton, no HUD, no debug overlay.
 
@@ -239,7 +267,8 @@ Written for a video-to-video restyle model — describe the transformation of th
 - **Lucy prompt-transition behavior:** how many frames does a `setPrompt` take to fully settle? Measure; if slow, lengthen the required CLOSED hold or crossfade inside the portal.
 - **Lucy latency variance** on real networks; the Δ-buffer is the mitigation.
 - **Hands inside Lucy's output:** Lucy transforms the whole frame including hands — this is fine (inside the portal you *want* transformed hands), but check edge seams where transformed hands meet real hands at the polygon boundary; feathering should help.
-- **Mobile browser support:** MediaPipe tasks-vision + WebRTC both work on modern mobile browsers but perf-test early on iOS Safari (Sne is on iOS).
+- **Cross-browser desktop support (the risk that actually matters):** Safari on macOS is the one to watch — canvas `filter` (used for the portal feather), `captureStream`, and `MediaRecorder` codec support all differ from Chrome's, and `MediaRecorder` webm output in particular is historically weak there. Test the composite and the Phase 1.5 export in Safari before demoing. Chrome on macOS is the reference implementation.
+- **Mobile browser support (P2, non-blocking):** MediaPipe tasks-vision + WebRTC both work on modern mobile browsers in principle, but this is explicitly not a launch requirement (§3.1). Expect the real obstacles to be sustained framerate under thermal throttling and iOS Safari's camera/autoplay quirks. Try it once the desktop path is done; do not let findings here reshape the desktop build.
 - **Resolution mismatch:** Lucy outputs 720p at a fixed aspect; camera/canvas must match or be letterboxed consistently so the composite aligns pixel-perfect. Establish one canonical canvas size early.
 - Free trial credits exist on new Decart accounts — use for MVP testing before spending.
 
@@ -254,6 +283,7 @@ Written for a video-to-video restyle model — describe the transformation of th
 ## 9. Working agreements for Claude Code
 
 - Build phase by phase; do not start Phase 1 until Phase 0 exit criteria pass.
+- Desktop first (§3.1). Build and measure against Chrome on macOS. Never trade desktop quality for mobile compatibility, and do not add mobile-specific code paths unasked.
 - Keep the gesture trigger logic behind an interface so alternative trigger strategies can be swapped in.
 - Everything client-side; no secrets committed; API key via env/local input only.
 - Prefer simple 2D canvas first; optimize only if FPS < 24.
