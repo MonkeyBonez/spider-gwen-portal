@@ -1,0 +1,24 @@
+{
+  "name": "portal",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "assets": "node scripts/fetch-assets.mjs",
+    "postinstall": "node scripts/fetch-assets.mjs",
+    "dev": "npm run assets && vite --host",
+    "build": "npm run assets && tsc && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview --host",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^1.0.1"
+  }
+}

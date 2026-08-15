@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Portal geometry verification</title>
+<style>
+  :root { color-scheme: dark; --fg:#e7e9ee; --muted:#8a90a0; --line:rgba(255,255,255,.12); }
+  body { margin:0; padding:24px; background:#0a0b0f; color:var(--fg);
+         font-family:ui-sans-serif,system-ui,-apple-system,sans-serif; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  p  { color:var(--muted); font-size:14px; margin:0 0 16px; max-width:70ch; line-height:1.5; }
+  .grid { display:flex; flex-wrap:wrap; gap:16px; }
+  figure { margin:0; }
+  figcaption { font-size:12px; color:var(--muted); margin-top:6px; font-family:ui-monospace,monospace; }
+  canvas { background:#14161d; border:1px solid var(--line); border-radius:10px;
+           display:block; touch-action:none; }
+  .controls { display:flex; gap:16px; align-items:center; margin:16px 0; flex-wrap:wrap; font-size:13px; }
+  label { display:flex; gap:6px; align-items:center; color:var(--muted); }
+  button { padding:6px 12px; border-radius:999px; border:1px solid var(--line);
+           background:rgba(255,255,255,.08); color:var(--fg); font-size:13px; cursor:pointer; }
+  code { background:rgba(255,255,255,.08); padding:1px 5px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+<h1>Portal geometry verification</h1>
+<p>
+  PRD §2.1 claims that connecting <code>L-index → R-index → R-thumb → L-thumb</code>
+  and filling with the <strong>even-odd</strong> rule gives a quad when the hands are
+  level and the correct two-triangle shape when one hand rotates — with no
+  special-case geometry code. The right-hand canvas is draggable: move
+  <code>L-idx</code> below <code>L-thm</code> and watch the bowtie resolve itself.
+  The left two are fixed reference cases.
+</p>
+
+<div class="controls">
+  <label><input type="checkbox" id="evenodd" checked /> even-odd fill (uncheck for nonzero)</label>
+  <label>feather <input type="range" id="feather" min="0" max="30" value="6" /></label>
+  <button id="reset">Reset draggable</button>
+</div>
+
+<div class="grid">
+  <figure><canvas id="c-level" width="320" height="320"></canvas>
+    <figcaption>hands level → quad</figcaption></figure>
+  <figure><canvas id="c-bowtie" width="320" height="320"></canvas>
+    <figcaption>left hand rotated → bowtie</figcaption></figure>
+  <figure><canvas id="c-drag" width="320" height="320"></canvas>
+    <figcaption id="drag-caption">draggable · —</figcaption></figure>
+</div>
+
+<script>
+const LABELS = ['L-idx', 'R-idx', 'R-thm', 'L-thm'];
+
+// Fixed reference cases, in polygon traversal order.
+const LEVEL  = [{x:80,y:90},  {x:240,y:90},  {x:240,y:230}, {x:80,y:230}];
+const BOWTIE = [{x:80,y:230}, {x:240,y:90},  {x:240,y:230}, {x:80,y:90}];
+let drag = LEVEL.map(p => ({...p}));
+
+const evenodd = document.getElementById('evenodd');
+const feather = document.getElementById('feather');
+
+function pathOf(pts) {
+  const p = new Path2D();
+  p.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) p.lineTo(pts[i].x, pts[i].y);
+  p.closePath();
+  return p;
+}
+
+/**
+ * Mirrors src/renderer.ts exactly: rasterise the polygon into a mask with the
+ * chosen fill rule and a blur, then destination-in it onto the content layer.
+ */
+function draw(canvas, pts) {
+  const ctx = canvas.getContext('2d');
+  const { width: w, height: h } = canvas;
+  ctx.clearRect(0, 0, w, h);
+
+  // Stand-in for the camera feed, so the composite is actually visible.
+  ctx.fillStyle = '#14161d';
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(255,255,255,.06)';
+  for (let x = 0; x < w; x += 20) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, x); ctx.lineTo(w, x); ctx.stroke();
+  }
+
+  const layer = document.createElement('canvas');
+  layer.width = w; layer.height = h;
+  const lctx = layer.getContext('2d');
+  const grad = lctx.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, '#ff4d6d');
+  grad.addColorStop(1, '#4dc9ff');
+  lctx.fillStyle = grad;
+  lctx.fillRect(0, 0, w, h);
+
+  const mask = document.createElement('canvas');
+  mask.width = w; mask.height = h;
+  const mctx = mask.getContext('2d');
+  const blur = Number(feather.value);
+  if (blur > 0) mctx.filter = `blur(${blur}px)`;
+  mctx.fillStyle = '#fff';
+  mctx.fill(pathOf(pts), evenodd.checked ? 'evenodd' : 'nonzero');
+
+  lctx.globalCompositeOperation = 'destination-in';
+  lctx.drawImage(mask, 0, 0);
+  ctx.drawImage(layer, 0, 0);
+
+  ctx.strokeStyle = 'rgba(0,255,180,.9)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke(pathOf(pts));
+  ctx.font = '600 11px ui-monospace, monospace';
+  pts.forEach((p, i) => {
+    ctx.fillStyle = 'rgba(0,255,180,.95)';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillText(LABELS[i], p.x + 8, p.y - 8);
+  });
+}
+
+function crosses(a, b, c, d) {
+  const cr = (p, q, r) => (q.x-p.x)*(r.y-p.y) - (q.y-p.y)*(r.x-p.x);
+  return (cr(c,d,a) > 0) !== (cr(c,d,b) > 0) && (cr(a,b,c) > 0) !== (cr(a,b,d) > 0);
+}
+function isBowtie(p) {
+  return crosses(p[0], p[1], p[2], p[3]) || crosses(p[1], p[2], p[3], p[0]);
+}
+
+function renderAll() {
+  draw(document.getElementById('c-level'),  LEVEL);
+  draw(document.getElementById('c-bowtie'), BOWTIE);
+  draw(document.getElementById('c-drag'),   drag);
+  document.getElementById('drag-caption').textContent =
+    `draggable · ${isBowtie(drag) ? 'BOWTIE (self-intersecting)' : 'simple quad'}`;
+}
+
+const dragCanvas = document.getElementById('c-drag');
+let held = -1;
+const at = (e) => {
+  const r = dragCanvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+};
+dragCanvas.addEventListener('pointerdown', (e) => {
+  const p = at(e);
+  held = drag.findIndex((q) => Math.hypot(q.x - p.x, q.y - p.y) < 16);
+  if (held >= 0) dragCanvas.setPointerCapture(e.pointerId);
+});
+dragCanvas.addEventListener('pointermove', (e) => {
+  if (held < 0) return;
+  drag[held] = at(e);
+  renderAll();
+});
+dragCanvas.addEventListener('pointerup', () => { held = -1; });
+
+document.getElementById('reset').onclick = () => {
+  drag = LEVEL.map((p) => ({ ...p }));
+  renderAll();
+};
+evenodd.onchange = renderAll;
+feather.oninput = renderAll;
+renderAll();
+</script>
+</body>
+</html>

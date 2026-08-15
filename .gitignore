@@ -1,0 +1,19 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Fetched at install time by portal/scripts/fetch-assets.mjs (~20MB of binaries)
+portal/public/wasm/
+portal/public/models/
+
+# Secrets — Decart API key never gets committed (PRD §9)
+.env
+.env.*
+!.env.example
+
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea/

@@ -1,0 +1,108 @@
+/**
+ * Tunable configuration for the portal POC.
+ * Everything here is live-editable from the debug panel (§5) and persisted to
+ * localStorage so tuning survives a reload.
+ */
+
+export interface Config {
+  // --- capture / canvas -----------------------------------------------------
+  /** Canonical canvas size. Lucy outputs 720p (PRD §7) so we lock to 1280x720. */
+  captureWidth: number;
+  captureHeight: number;
+  captureFps: number;
+  /** Mirror the displayed output (selfie view). Geometry is mirror-invariant. */
+  mirror: boolean;
+
+  // --- hand tracking --------------------------------------------------------
+  minHandDetectionConfidence: number;
+  minHandPresenceConfidence: number;
+  minTrackingConfidence: number;
+  /** Exponential moving average on the 4 portal points. 1 = no smoothing. */
+  emaAlpha: number;
+  /** Swap the left/right handedness assignment (mirror-mode ambiguity, §2.1). */
+  swapHandedness: boolean;
+
+  // --- gesture trigger ------------------------------------------------------
+  /** Normalised gap below which the portal counts as "touching"/closed. */
+  closeThreshold: number;
+  /** Normalised gap above which the portal counts as re-opened (hysteresis). */
+  openThreshold: number;
+  /** Frames the close condition must hold before CLOSED latches. */
+  debounceFrames: number;
+  /** Minimum ms between two dimension switches. */
+  cooldownMs: number;
+  /** |d(gap)/dt| required to count as "moving together"/"moving apart". 0 disables. */
+  velocityEpsilon: number;
+  /** When to advance the dimension: on CLOSED latch, or at the moment of opening. */
+  advanceOn: 'closed' | 'opening';
+  /** How long a total tracking dropout is tolerated before the state machine resets. */
+  lostResetMs: number;
+
+  // --- compositing ----------------------------------------------------------
+  /** Portal edge feather in px. */
+  feather: number;
+
+  // --- sync (Phase 1 placeholder, §2.3) ------------------------------------
+  /** Delay applied to the raw feed + mask to align with Lucy's stream. */
+  syncDelayMs: number;
+
+  // --- debug ----------------------------------------------------------------
+  showLandmarks: boolean;
+  showPolygonOutline: boolean;
+  showPanel: boolean;
+}
+
+export const DEFAULT_CONFIG: Config = {
+  captureWidth: 1280,
+  captureHeight: 720,
+  captureFps: 30,
+  mirror: true,
+
+  minHandDetectionConfidence: 0.6,
+  minHandPresenceConfidence: 0.6,
+  minTrackingConfidence: 0.6,
+  emaAlpha: 0.5,
+  swapHandedness: false,
+
+  closeThreshold: 0.35,
+  openThreshold: 0.55,
+  debounceFrames: 3,
+  cooldownMs: 500,
+  velocityEpsilon: 0.4,
+  advanceOn: 'closed',
+  lostResetMs: 1000,
+
+  feather: 6,
+
+  syncDelayMs: 0,
+
+  showLandmarks: false,
+  showPolygonOutline: true,
+  showPanel: true,
+};
+
+const STORAGE_KEY = 'portal.config.v1';
+
+export function loadConfig(): Config {
+  const cfg = { ...DEFAULT_CONFIG };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) Object.assign(cfg, JSON.parse(raw) as Partial<Config>);
+  } catch {
+    /* corrupt or unavailable storage — fall back to defaults */
+  }
+  return cfg;
+}
+
+export function saveConfig(cfg: Config): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  } catch {
+    /* non-fatal */
+  }
+}
+
+export function resetConfig(cfg: Config): void {
+  Object.assign(cfg, DEFAULT_CONFIG);
+  saveConfig(cfg);
+}
