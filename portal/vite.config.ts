@@ -14,6 +14,9 @@ export default defineConfig({
         // Close-detection strictness ladder, driven by the real geometry
         // module rather than a copy of it (PRD §2.2.1).
         closure: resolve(here, 'closure.html'),
+        // Same comparison as `closure`, but on the live camera — the strictness
+        // gets picked here, on real hands.
+        tune: resolve(here, 'tune.html'),
       },
     },
   },

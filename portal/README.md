@@ -44,6 +44,7 @@ HTTP, so it needs a tunnel (`ngrok http 5173`) or an HTTPS dev server.
 | `src/debugPanel.ts` | live thresholds, readouts, rolling gap plot |
 | `src/dimensions.ts` | colour + prompt per dimension (prompts unused until Phase 1) |
 | `/transitions.html` | all six transitions side by side on synthetic hands |
+| `/tune.html` | **live** close-detection tuner — five triggers race on your real hands |
 | `/closure.html` | close detection at five strictnesses side by side — drag the 4 points |
 | `/verify.html` | standalone geometry harness — drag the 4 points |
 
@@ -110,13 +111,21 @@ In between, a long side forces the short one much smaller before the close count
 are the same number), so unlike a contact-mode change this can be tuned **without
 retuning the thresholds**, and a normal four-points-together close is unaffected.
 
-Compare them at **`/closure.html`**: the same pose at bias 0, 0.25, 0.5, 0.75 and 1,
-side by side, plus a map of exactly which side-pairs read as closed. Click the
-*wide index · thumbs shut* preset — the bias-0 panel reads CLOSED and the rest read
-open, which is the whole bug and the whole fix on one screen. Default is `0.7`,
-provisional until it's been judged there and on real hands.
+**Tune it at `/tune.html`** — the live one. Five independent copies of the real
+trigger run at once, one per bias, all fed your actual hands, each keeping its own
+switch count. Do ten deliberate close→open cycles, then deliberately do the sloppy
+lopsided thing, and read off which bias counted ten and which over-counted. The
+scatter plot shows where your real hands land in side-vs-side space, with the closed
+region shaded — tune so the shaded corner covers the closes you meant and misses the
+ones you didn't. Settings are the app's own (same localStorage), so whatever you land
+on is what the app uses.
 
-Watch `sides a/b` in the live panel to see the asymmetry with your own hands.
+`/closure.html` is the same comparison without a camera: drag a synthetic pose, click
+the *wide index · thumbs shut* preset, and the bias-0 panel reads CLOSED while the
+rest read open — the whole bug and the whole fix on one screen. Useful for
+understanding the rule; use `/tune.html` to actually pick the number.
+
+Default is `0.7`, provisional until judged on real hands.
 
 The switch always fires **on close**, never on opening — reopening only re-arms for
 the next cycle. That is fixed, not a setting: the closed portal is the only moment

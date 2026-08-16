@@ -132,9 +132,20 @@ Two properties worth relying on:
   `min` of the parallel and crossed pairings; the blend just combines the two sides
   inside each. `any` is unaffected, having no notion of two sides.
 
-**The value is deferred**, like the transition variant in §4.1. `/closure.html` runs
-the same pose at bias 0, 0.25, 0.5, 0.75 and 1 side by side, with a map of which
-side-pairs read as closed, so the pick is made by eye. Provisional default 0.7.
+**The value is deferred**, like the transition variant in §4.1, and picked by feel
+rather than argued about. Two harnesses:
+
+- **`/tune.html`** — the live one, and where the decision actually gets made. Five
+  independent copies of the real trigger run in parallel, one per bias, all fed the
+  same camera frames, each keeping its own switch count. Perform ten deliberate cycles
+  and then the sloppy lopsided close, and the counts say which bias matched intent. A
+  scatter of where real hands land in side-vs-side space, overlaid with the shaded
+  closed region, turns tuning into "cover the closes I meant, miss the ones I didn't".
+  It writes to the app's own settings, so the chosen value is live immediately.
+- **`/closure.html`** — the same comparison on a synthetic pose you drag, with the
+  decision boundary drawn. No camera needed; good for understanding the rule.
+
+Provisional default 0.7.
 
 ### 2.3 Sync / latency alignment
 

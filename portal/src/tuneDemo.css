@@ -1,0 +1,215 @@
+/* Styles specific to tune.html. Layout basics come from demo.css. */
+
+#demo .hidden {
+  display: none !important;
+}
+
+#demo .gate {
+  padding: 32px 0;
+}
+
+#demo .gate button,
+#demo .controls button {
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--fg);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+#demo .controls button {
+  padding: 6px 14px;
+  font-size: 12px;
+}
+
+#demo .gate button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+#demo .error {
+  color: #ff8080;
+  font-size: 13px;
+  margin-top: 12px;
+}
+
+#demo .main {
+  display: grid;
+  /* Preview capped so the lanes and the map stay near the fold — you need the
+     camera and the counts on screen together for this to be tunable. */
+  grid-template-columns: minmax(0, 620px) 200px;
+  gap: 18px;
+  align-items: start;
+}
+
+#demo .preview canvas {
+  width: 100%;
+  height: auto;
+}
+
+#demo .preview figcaption {
+  margin-top: 8px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- the five racing triggers --- */
+
+#demo .lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#demo .lane {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+  font-family: ui-monospace, monospace;
+  transition: background 120ms, border-color 120ms;
+}
+
+#demo .lane-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+#demo .lane-head strong {
+  font-size: 12px;
+}
+
+#demo .lane .count {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+#demo .lane-state,
+#demo .lane-gap {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+#demo .lane-state {
+  margin-top: 4px;
+}
+
+#demo .lane-app {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The bias the app is actually set to. */
+#demo .lane.active {
+  border-color: rgba(0, 255, 180, 0.55);
+  background: rgba(0, 255, 180, 0.07);
+}
+
+/* Portal currently reads as shut at this bias. */
+#demo .lane.closed .lane-state {
+  color: #ff9b9b;
+}
+
+/* A switch just fired here — flashes so you can see who counted what. */
+#demo .lane.fired {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* --- analysis --- */
+
+#demo .analysis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+#demo .analysis figure {
+  max-width: 340px;
+}
+
+#demo .analysis figcaption {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+#demo .analysis figcaption strong {
+  font-size: 13px;
+  font-family: ui-monospace, monospace;
+}
+
+#demo .analysis figcaption span {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+#demo .explain {
+  flex: 1;
+  min-width: 320px;
+  max-width: 62ch;
+}
+
+#demo .explain h3 {
+  font-size: 14px;
+  margin: 0 0 12px;
+}
+
+#demo .explain dl {
+  margin: 0;
+}
+
+#demo .explain dt {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--fg);
+  margin-top: 14px;
+}
+
+#demo .explain dt:first-child {
+  margin-top: 0;
+}
+
+#demo .explain dd {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+#demo .explain code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+@media (max-width: 860px) {
+  #demo .main {
+    grid-template-columns: 1fr;
+  }
+  #demo .lanes {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  #demo .lane {
+    flex: 1 1 130px;
+  }
+}
