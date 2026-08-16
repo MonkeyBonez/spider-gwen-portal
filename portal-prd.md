@@ -102,8 +102,23 @@ choice can be made by observation.
 - **Approach, in order:**
   1. **V1: composite live, no compensation.** May look fine at small delays. Ship this first and evaluate visually.
   2. **V2: delay the raw feed + mask by an estimated Δ** to align with Lucy's stream. Implement a ring buffer of (frame, landmarks, timestamp) and render from `now − Δ`. Δ is a user-tunable slider in the debug panel (0–500ms). Investigate whether the Decart SDK exposes latency/stats (WebRTC `getStats()` RTT is a fallback estimator).
-     - **Where the estimate comes from:** the onboarding calibration gesture (§4.3) measures Δ directly — the user is cued between two known hand positions, and we time how long that move takes to appear in the returned stream. That is a real end-to-end number on this network, not a guess. The slider stays regardless; measured-once vs. re-measured vs. fixed vs. no compensation are options to A/B, not a settled choice.
+     - **Where the estimate comes from: the SDK, not us.** See §2.3.1.
   3. Note: delaying the *entire displayed output* by Δ is acceptable — the user is performing to camera, a uniform ~100ms display delay is not noticeable in the recording.
+
+#### 2.3.1 Measuring Δ — use the SDK's glass-to-glass number
+
+**Verify the exact JS API surface at build time** (option name, where readings are exposed). The clearest write-up found so far was in Decart's *Android* SDK README; the JS SDK README references the same feature but has not been read directly. Everything below is on that footing — the technique is confirmed to exist, the JS call signature is not.
+
+- **`debugQuality` → `g2gMs` is the number we want.** With the flag enabled, the SDK stamps a pixel marker into each outgoing frame and reads it back off the rendered output, reporting startup latency (`ttffMs`), steady-state glass-to-glass latency (`g2gMs`), and an end-to-end drop ratio (`g2gDropRatio`). `g2gMs` is camera-to-display **including inference**, which is exactly Δ.
+- **Why this matters more than it sounds:** WebRTC `getStats()` RTT measures the network leg only, and in real-time video the *dominant* cost is model inference. A session can therefore report a healthy RTT while feeling obviously laggy. RTT is a bad proxy for Δ; `g2gMs` is not a proxy at all.
+- **Note what the technique is:** a visual-watermark loopback — the objection to which was that a marker might not survive the model's transformation. Decart shipping it implies they place the marker where Lucy passes it through. Worth confirming by eye that the marker is not visible in normal output.
+- **Do not leave it on.** A stamped pixel marker in every outgoing frame does not belong in the user's recording. Enable it for a short measurement window (or a debug-panel "measure latency" action), read `g2gMs`, disable it. Whether it must be set at connect time — which would mean a reconnect to toggle it — is part of what to verify.
+- **`requestVideoFrameCallback` cannot replace it.** rvfc does expose `captureTime` and `receiveTime` for WebRTC sources, but for Lucy's stream "capture" means *when Decart's server emitted the frame*, not when our camera saw the original. So rvfc measures the downlink leg only. Useful for splitting Δ into network-down vs. everything-else when debugging; not a substitute for `g2gMs`. These fields are also optional per spec and Chromium-implemented — check Safari before depending on them.
+- **The manual slider stays regardless.** A measured Δ is a starting value, not a lock. Measured-once vs. re-measured periodically vs. a fixed value picked by feel vs. no compensation at all (V1) are all live options to A/B.
+
+**Backburner — `onConnectionQuality`.** While connected, the SDK reports a smoothed quality verdict derived from WebRTC stats (`rttMs`, `fps`, `packetLoss`, `upstreamJitterMs`) plus a `limitingFactor` of bandwidth / latency / loss / stall / cpu. That is the right input for a "your connection is degrading" UI state, and the `limitingFactor` is genuinely useful for telling a user *why*. It is separate from Δ and not needed to ship — note it, do not build it yet.
+
+**Cut:** deriving Δ ourselves by cross-correlating motion energy between the outgoing and returned streams. It was designed to solve a problem the SDK already solves, and its only remaining value would be validating `g2gMs`. Not worth the build.
 
 ---
 
@@ -225,7 +240,7 @@ Goal: replace solid color with live Lucy stream.
 - Record button → MediaRecorder on the composited canvas (+ mic).
 - Download file; countdown timer; basic UX polish (start screen, camera permission flow). Verify export works in Safari on macOS, not just Chrome — codec support differs. An unsupported-browser notice is enough for anything outside the §3.1 tiers; no mobile-specific work here.
 - **Performer HUD — hand skeleton as a dimension indicator** (Sne's idea, see §4.2).
-- **Onboarding / calibration tutorial** — teach the gesture, confirm hands are in frame, and measure thresholds and latency from two cued hand positions (Sne's idea, see §4.3).
+- **Gesture tutorial** — confirm hands are in frame, teach the gesture as two held positions, and fit the close/open thresholds to this user's actual hands (Sne's idea, see §4.3). Needs no Lucy connection.
 - **Exit criteria:** exported file contains the composite only — no skeleton, no HUD, no debug overlay. A first-time user can get a working take without being told how the gesture works.
 
 #### 4.2 Performer HUD: skeleton dimension indicator
@@ -275,94 +290,51 @@ Open questions:
   stylistic effect rather than a debug affordance), it becomes a per-export toggle:
   record from a third canvas that composites both layers. Note only; not now.
 
-#### 4.3 Onboarding: the tutorial / calibration gesture
+#### 4.3 Onboarding: the gesture tutorial
 
-Before the first real take, walk the user through the gesture once. This is a UX
-requirement and a technical one at the same time — the same 10 seconds that teach the
-gesture also hand us three measurements we currently have to guess at.
+Before the first real take, walk the user through the gesture once.
+
+**Scope note.** An earlier draft of this section also used the tutorial to *measure
+end-to-end latency*, by cueing a move between two poses and hunting for that move in
+the returned stream. That is cut: the Decart SDK reports glass-to-glass latency
+directly (see §2.3), so building a vision-based estimator would be reinventing a
+number we are already handed. What remains here is a **user-facing tutorial** that
+happens to also fit the gesture thresholds, which needs no model and no network.
 
 **The flow, in order.** Structure it as **two named, held positions** rather than
-"do the gesture a few times" (Sne's refinement). We ask for position 1, we cue the
-move, we ask for position 2 — and because we chose both the shapes and the moment, we
-know exactly what to look for and when. That is what makes the latency measurement
-tractable; see below.
+"do the gesture a few times" (Sne's idea) — it is a two-part shape, so teaching it as
+two shapes is clearer than demonstrating a motion, and holding each one gives us a
+clean sample of it.
 
 1. **Show your hands.** Nothing starts until both hands are detected. Draw an
    alignment guide on the preview — a ghost outline of the portal shape at a
    comfortable size and position — and ask the user to line their hands up with it.
    Advance when both hands are tracked, roughly on the guide, and stable for ~1s.
 2. **Position 1 — portal open.** The wide pose: thumbs and index fingers apart,
-   framing an open window. Hold it for ~1s while we confirm the shape is stable.
-3. **Cue the move, on our timing.** A visible countdown or beat, then "now close."
-   The cue matters as much as the poses — it is the moment we start the clock.
-4. **Position 2 — portal closed.** Thumbs together, index fingers together. **This
+   framing an open window. Hold ~1s while we confirm the shape is stable.
+3. **Position 2 — portal closed.** Thumbs together, index fingers together. **This
    pose is the start of the close, so position 2 *is* the trigger pose** — the tutorial
    is not a mime of the gesture, it is the gesture. Hold ~1s.
-5. **Rehearse the full cycle.** Now open and close ~3 more times freely. Confirm each
-   one visibly (the switch counter ticks, the skeleton recolours per §4.2, the
-   transition plays). This is where the user learns what a registered switch looks and
-   feels like, which is what stops them performing a whole take unaware that nothing
-   is firing.
-6. **Then start.** Only now offer Record.
+4. **Rehearse the full cycle.** Now open and close ~3 times freely. Confirm each one
+   visibly (the switch counter ticks, the skeleton recolours per §4.2, the transition
+   plays). This is where the user learns what a registered switch looks and feels like,
+   which is what stops them performing a whole take unaware that nothing is firing.
+5. **Then start.** Only now offer Record.
 
-Steps 2–4 are the measurement; step 5 is the lesson. They can be presented as one
-continuous instruction ("open… and close… good, now do that a few times") so it reads
-as a single 10-second onboarding rather than a test followed by a tutorial.
+Present it as one continuous instruction ("open… and close… good, now do that a few
+times") so it reads as a single ~10-second onboarding, not a test.
 
-**Why this is not just a tutorial.** The two positions and the rehearsal cycles are a
-calibration sample, and we should use them for all three of the things we are
-otherwise hand-tuning:
+**What the two held positions buy us, beyond teaching.** Position 1 gives this user's
+real open `gap`; position 2 gives their real closed `gap` — with their hands, their
+camera distance, their contact mode, held still enough to average over. Fit
+`closeThreshold` and `openThreshold` to that measured range instead of shipping the
+global guesses in §2.2. Everyone's hands are a different size and everyone sits a
+different distance from the laptop; this removes the single most likely cause of "it
+doesn't work for me." **This works from Phase 0 — no Lucy, no network, no cost.**
 
-- **Gesture thresholds (works from Phase 0, no Lucy needed).** Position 1 gives this
-  user's real open `gap`; position 2 gives their real closed `gap` — with their hands,
-  their camera distance, their contact mode, held still enough to average over. Fit
-  `closeThreshold` and `openThreshold` to that measured range instead of shipping the
-  global guesses in §2.2. Everyone's hands are a different size and everyone sits a
-  different distance from the laptop; this removes the single most likely cause of "it
-  doesn't work for me."
-- **End-to-end latency Δ (Phase 1, needs Lucy connected).** See below.
-- **Framerate under real load.** The rehearsal runs the full pipeline with the user
-  actually moving, so it is a better perf sample than an idle preview. If we are below
-  the §4 Phase 0 bar here, say so before they record rather than after.
-
-**How to measure Δ.** The two-position structure is what makes this work. A free-form
-"do the gesture" gives us an event we have to go hunting for in the returned stream.
-A commanded move between two known poses gives us three things instead: a **known
-start shape**, a **known end shape**, and a **known cue time**. So we are not
-detecting an arbitrary event — we are asking "when did the returned stream stop
-looking like position 1 and start looking like position 2?", inside a narrow window
-that begins at the cue. Both poses are held, so we can average over many frames rather
-than trusting one, and the transition between two distinct held states is about the
-easiest signal there is to timestamp.
-
-In preference order:
-
-1. **Landmark-based.** Run a second `HandLandmarker` pass on the *returned* Lucy video
-   for the duration of the calibration only, and compare when `gap` crosses the
-   midpoint between the measured position-1 and position-2 values in each signal. Most
-   precise, and the threshold is already calibrated by the poses themselves. Risk: a
-   heavy restyle may render hands the detector can't track (see §7) — detect that and
-   fall back rather than reporting a confidently wrong number.
-2. **Pose-template correlation.** Skip landmarks: take a small downscaled grayscale
-   template of each held pose from the *returned* stream, then score every frame in
-   the window against both. Δ is where the score crosses over. Works even if the
-   restyle makes hands unrecognisable to a detector, because we are matching the
-   output against itself, not against an idea of what a hand looks like.
-3. **Motion-energy cross-correlation.** Reduce both streams to a scalar per frame
-   (mean absolute frame difference) and find the lag maximising correlation across the
-   window. Crudest, most robust, no assumptions at all — the move between the two
-   poses is a large brief whole-frame motion spike. Good enough as a sanity check on
-   the other two even if it isn't the primary.
-4. **Manual slider.** Always keep it. Whatever we measure is a starting value, not a
-   lock — the panel's Δ slider (§2.3, §5) stays, and the user can nudge it.
-
-Repeat the two-position move ~3 times and take the median, not a single sample; one
-measurement on a jittery network is worth very little.
-
-Treat the measured Δ as **one option among several to A/B later**, not a solved
-problem: measured-once, re-measured periodically during a session, a fixed value
-picked by feel, and no compensation at all (§2.3 V1) are all live candidates, and
-which one looks best is an empirical question we should not pre-judge here.
+The rehearsal cycles are also the best framerate sample we get, since they run the
+full pipeline with the user actually moving. If we are below the §4 Phase 0 bar there,
+say so before they record rather than after.
 
 **Constraints and open questions:**
 
@@ -376,11 +348,9 @@ which one looks best is an empirical question we should not pre-judge here.
   1, while letting it fire makes the rehearsal a truthful preview of the real thing.
   Leaning toward letting it fire during the rehearsal cycles (step 5) and resetting
   the dimension index when recording starts.
-- Calibration must not cost Lucy time. Steps 1 and 5 need no model at all; only the Δ
-  measurement (steps 2–4) does. Either run the whole tutorial pre-connect and take the
-  Δ samples in the first seconds after connecting, or connect just before step 2. Do
-  not hold an open billed stream through an explanatory screen (§2 Phase 2 cost
-  hygiene).
+- **Run the whole tutorial pre-connect.** Nothing in it needs Lucy now that latency
+  measurement is gone, so connect only when the user hits Record. Do not hold an open
+  billed stream through an explanatory screen (§2 Phase 2 cost hygiene).
 - If a user cannot get a single cycle to register during rehearsal, that is the
   clearest possible diagnostic signal and we should react to it in-product — suggest
   moving back from the camera, improving the lighting, or trying `swapHandedness` —
@@ -403,7 +373,8 @@ which one looks best is an empirical question we should not pre-judge here.
 - Selectors: contact mode (§2.2.1), switch transition (§4.1).
 - Sliders: EMA α, close threshold, open threshold, debounce frames, cooldown ms, sync delay Δ, transition collapse/hold/reopen/overshoot (§4.1).
 - Readouts: FPS, state machine state, normalized gap/area, `gap` under all three contact modes at once, Lucy connection state, generation seconds used.
-- Calibration (§4.3): a "run calibration" button, the measured position-1/position-2 `gap` values and the thresholds fitted from them, and the measured Δ per sample plus the median actually in use. Measured values must be visibly distinguishable from defaults, and overridable by the sliders above.
+- Calibration (§4.3): a "run tutorial" button, the measured position-1/position-2 `gap` values, and the thresholds fitted from them. Fitted values must be visibly distinguishable from defaults, and overridable by the sliders above.
+- Latency (§2.3.1): a "measure latency" action that enables `debugQuality` briefly and reads back `ttffMs` / `g2gMs` / `g2gDropRatio`, with the Δ actually in use shown alongside. Later, if built: the live `onConnectionQuality` verdict and its `limitingFactor`.
 
 ## 6. Initial prompt library (iterate later)
 
@@ -420,8 +391,8 @@ Written for a video-to-video restyle model — describe the transformation of th
 ## 7. Known risks / open questions
 
 - **Lucy prompt-transition behavior:** how many frames does a `setPrompt` take to fully settle? Measure; if slow, lengthen the required CLOSED hold or crossfade inside the portal.
-- **Lucy latency variance** on real networks; the Δ-buffer is the mitigation, and §4.3's calibration gesture is how Δ gets a real number. Open: Δ may drift *during* a session, in which case a one-shot measurement at the start is not enough and we need periodic re-measurement or a continuous estimator.
-- **Hands may not be trackable in Lucy's output.** §4.3's preferred latency measurement runs a second `HandLandmarker` pass on the returned stream, which assumes the restyled hands still look like hands. A heavy stylisation (pixel-art, watercolour) may break that. Mitigation is already in the design — fall back to pose-template or motion-energy correlation — but detecting the failure rather than silently reporting a wrong Δ is the part to get right.
+- **Lucy latency variance** on real networks; the Δ-buffer is the mitigation, and the SDK's `g2gMs` (§2.3.1) is how Δ gets a real number. Open: Δ may drift *during* a session, so a one-shot measurement may not be enough — but re-measuring means re-enabling the pixel marker mid-take, which we can't do during a recording. Possible answer is `onConnectionQuality` as a cheap "something changed, Δ is probably stale" signal.
+- **`debugQuality` is unverified on the JS SDK.** The feature is documented clearly for Android; the JS API surface has not been read directly (§2.3.1). If it turns out to be Android-only, Δ goes back to being a tuned slider — which is survivable, since V1 ships with no compensation at all. Check this early in Phase 1, before designing any UI around a measured number.
 - **Hands inside Lucy's output:** Lucy transforms the whole frame including hands — this is fine (inside the portal you *want* transformed hands), but check edge seams where transformed hands meet real hands at the polygon boundary; feathering should help.
 - **Cross-browser desktop support (the risk that actually matters):** Safari on macOS is the one to watch — canvas `filter` (used for the portal feather), `captureStream`, and `MediaRecorder` codec support all differ from Chrome's, and `MediaRecorder` webm output in particular is historically weak there. Test the composite and the Phase 1.5 export in Safari before demoing. Chrome on macOS is the reference implementation.
 - **Mobile browser support (P2, non-blocking):** MediaPipe tasks-vision + WebRTC both work on modern mobile browsers in principle, but this is explicitly not a launch requirement (§3.1). Expect the real obstacles to be sustained framerate under thermal throttling and iOS Safari's camera/autoplay quirks. Try it once the desktop path is done; do not let findings here reshape the desktop build.
@@ -432,7 +403,8 @@ Written for a video-to-video restyle model — describe the transformation of th
 
 - MediaPipe Hand Landmarker (Web/JS): https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker/web_js
 - Decart platform & SDK docs: https://docs.platform.decart.ai/models/realtime/lucy-2.5 and https://platform.decart.ai/
-- Decart JS SDK: `@decartai/sdk` on npm
+- Decart JS SDK: `@decartai/sdk` on npm — read its README for `debugQuality` / `g2gMs` and `onConnectionQuality` (§2.3.1); the Android SDK README is the fuller write-up if the JS one is thin.
+- `requestVideoFrameCallback` metadata (`captureTime`, `receiveTime`): W3C spec — note these are optional fields, Chromium-implemented.
 
 ---
 
