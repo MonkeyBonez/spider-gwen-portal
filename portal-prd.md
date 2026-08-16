@@ -102,6 +102,7 @@ choice can be made by observation.
 - **Approach, in order:**
   1. **V1: composite live, no compensation.** May look fine at small delays. Ship this first and evaluate visually.
   2. **V2: delay the raw feed + mask by an estimated Δ** to align with Lucy's stream. Implement a ring buffer of (frame, landmarks, timestamp) and render from `now − Δ`. Δ is a user-tunable slider in the debug panel (0–500ms). Investigate whether the Decart SDK exposes latency/stats (WebRTC `getStats()` RTT is a fallback estimator).
+     - **Where the estimate comes from:** the onboarding calibration gesture (§4.3) measures Δ directly — the user is cued between two known hand positions, and we time how long that move takes to appear in the returned stream. That is a real end-to-end number on this network, not a guess. The slider stays regardless; measured-once vs. re-measured vs. fixed vs. no compensation are options to A/B, not a settled choice.
   3. Note: delaying the *entire displayed output* by Δ is acceptable — the user is performing to camera, a uniform ~100ms display delay is not noticeable in the recording.
 
 ---
@@ -224,7 +225,8 @@ Goal: replace solid color with live Lucy stream.
 - Record button → MediaRecorder on the composited canvas (+ mic).
 - Download file; countdown timer; basic UX polish (start screen, camera permission flow). Verify export works in Safari on macOS, not just Chrome — codec support differs. An unsupported-browser notice is enough for anything outside the §3.1 tiers; no mobile-specific work here.
 - **Performer HUD — hand skeleton as a dimension indicator** (Sne's idea, see §4.2).
-- **Exit criteria:** exported file contains the composite only — no skeleton, no HUD, no debug overlay.
+- **Onboarding / calibration tutorial** — teach the gesture, confirm hands are in frame, and measure thresholds and latency from two cued hand positions (Sne's idea, see §4.3).
+- **Exit criteria:** exported file contains the composite only — no skeleton, no HUD, no debug overlay. A first-time user can get a working take without being told how the gesture works.
 
 #### 4.2 Performer HUD: skeleton dimension indicator
 
@@ -273,6 +275,121 @@ Open questions:
   stylistic effect rather than a debug affordance), it becomes a per-export toggle:
   record from a third canvas that composites both layers. Note only; not now.
 
+#### 4.3 Onboarding: the tutorial / calibration gesture
+
+Before the first real take, walk the user through the gesture once. This is a UX
+requirement and a technical one at the same time — the same 10 seconds that teach the
+gesture also hand us three measurements we currently have to guess at.
+
+**The flow, in order.** Structure it as **two named, held positions** rather than
+"do the gesture a few times" (Sne's refinement). We ask for position 1, we cue the
+move, we ask for position 2 — and because we chose both the shapes and the moment, we
+know exactly what to look for and when. That is what makes the latency measurement
+tractable; see below.
+
+1. **Show your hands.** Nothing starts until both hands are detected. Draw an
+   alignment guide on the preview — a ghost outline of the portal shape at a
+   comfortable size and position — and ask the user to line their hands up with it.
+   Advance when both hands are tracked, roughly on the guide, and stable for ~1s.
+2. **Position 1 — portal open.** The wide pose: thumbs and index fingers apart,
+   framing an open window. Hold it for ~1s while we confirm the shape is stable.
+3. **Cue the move, on our timing.** A visible countdown or beat, then "now close."
+   The cue matters as much as the poses — it is the moment we start the clock.
+4. **Position 2 — portal closed.** Thumbs together, index fingers together. **This
+   pose is the start of the close, so position 2 *is* the trigger pose** — the tutorial
+   is not a mime of the gesture, it is the gesture. Hold ~1s.
+5. **Rehearse the full cycle.** Now open and close ~3 more times freely. Confirm each
+   one visibly (the switch counter ticks, the skeleton recolours per §4.2, the
+   transition plays). This is where the user learns what a registered switch looks and
+   feels like, which is what stops them performing a whole take unaware that nothing
+   is firing.
+6. **Then start.** Only now offer Record.
+
+Steps 2–4 are the measurement; step 5 is the lesson. They can be presented as one
+continuous instruction ("open… and close… good, now do that a few times") so it reads
+as a single 10-second onboarding rather than a test followed by a tutorial.
+
+**Why this is not just a tutorial.** The two positions and the rehearsal cycles are a
+calibration sample, and we should use them for all three of the things we are
+otherwise hand-tuning:
+
+- **Gesture thresholds (works from Phase 0, no Lucy needed).** Position 1 gives this
+  user's real open `gap`; position 2 gives their real closed `gap` — with their hands,
+  their camera distance, their contact mode, held still enough to average over. Fit
+  `closeThreshold` and `openThreshold` to that measured range instead of shipping the
+  global guesses in §2.2. Everyone's hands are a different size and everyone sits a
+  different distance from the laptop; this removes the single most likely cause of "it
+  doesn't work for me."
+- **End-to-end latency Δ (Phase 1, needs Lucy connected).** See below.
+- **Framerate under real load.** The rehearsal runs the full pipeline with the user
+  actually moving, so it is a better perf sample than an idle preview. If we are below
+  the §4 Phase 0 bar here, say so before they record rather than after.
+
+**How to measure Δ.** The two-position structure is what makes this work. A free-form
+"do the gesture" gives us an event we have to go hunting for in the returned stream.
+A commanded move between two known poses gives us three things instead: a **known
+start shape**, a **known end shape**, and a **known cue time**. So we are not
+detecting an arbitrary event — we are asking "when did the returned stream stop
+looking like position 1 and start looking like position 2?", inside a narrow window
+that begins at the cue. Both poses are held, so we can average over many frames rather
+than trusting one, and the transition between two distinct held states is about the
+easiest signal there is to timestamp.
+
+In preference order:
+
+1. **Landmark-based.** Run a second `HandLandmarker` pass on the *returned* Lucy video
+   for the duration of the calibration only, and compare when `gap` crosses the
+   midpoint between the measured position-1 and position-2 values in each signal. Most
+   precise, and the threshold is already calibrated by the poses themselves. Risk: a
+   heavy restyle may render hands the detector can't track (see §7) — detect that and
+   fall back rather than reporting a confidently wrong number.
+2. **Pose-template correlation.** Skip landmarks: take a small downscaled grayscale
+   template of each held pose from the *returned* stream, then score every frame in
+   the window against both. Δ is where the score crosses over. Works even if the
+   restyle makes hands unrecognisable to a detector, because we are matching the
+   output against itself, not against an idea of what a hand looks like.
+3. **Motion-energy cross-correlation.** Reduce both streams to a scalar per frame
+   (mean absolute frame difference) and find the lag maximising correlation across the
+   window. Crudest, most robust, no assumptions at all — the move between the two
+   poses is a large brief whole-frame motion spike. Good enough as a sanity check on
+   the other two even if it isn't the primary.
+4. **Manual slider.** Always keep it. Whatever we measure is a starting value, not a
+   lock — the panel's Δ slider (§2.3, §5) stays, and the user can nudge it.
+
+Repeat the two-position move ~3 times and take the median, not a single sample; one
+measurement on a jittery network is worth very little.
+
+Treat the measured Δ as **one option among several to A/B later**, not a solved
+problem: measured-once, re-measured periodically during a session, a fixed value
+picked by feel, and no compensation at all (§2.3 V1) are all live candidates, and
+which one looks best is an empirical question we should not pre-judge here.
+
+**Constraints and open questions:**
+
+- Skippable, and remembered. A returning user should not sit through the tutorial
+  every session — offer "recalibrate" instead. But re-run the alignment check (step 1)
+  every session regardless; it costs a second and it catches the camera being at a
+  different distance today.
+- **Does the tutorial's close count as a real switch?** Position 2 is the trigger
+  pose, so the state machine will fire on it unless we suppress it. Decide
+  deliberately: suppressing keeps the user's first recorded take starting on dimension
+  1, while letting it fire makes the rehearsal a truthful preview of the real thing.
+  Leaning toward letting it fire during the rehearsal cycles (step 5) and resetting
+  the dimension index when recording starts.
+- Calibration must not cost Lucy time. Steps 1 and 5 need no model at all; only the Δ
+  measurement (steps 2–4) does. Either run the whole tutorial pre-connect and take the
+  Δ samples in the first seconds after connecting, or connect just before step 2. Do
+  not hold an open billed stream through an explanatory screen (§2 Phase 2 cost
+  hygiene).
+- If a user cannot get a single cycle to register during rehearsal, that is the
+  clearest possible diagnostic signal and we should react to it in-product — suggest
+  moving back from the camera, improving the lighting, or trying `swapHandedness` —
+  rather than dropping them into a broken session.
+- Open: does the alignment guide help or annoy? A fixed ghost outline enforces a
+  framing that may not suit everyone's arm length. The alternative is no guide, just
+  "get both hands in frame." Prototype the guide, but be willing to cut it to a simple
+  hands-detected indicator.
+
 ### Phase 2 — BYO key & cost model
 - User pastes their own Decart API key (stored in localStorage only, never sent to any server of ours). Their usage bills to their account.
 - Later option: hosted accounts where users pay us and we pay Decart — requires backend, auth, metering. Out of scope for now; note only.
@@ -286,6 +403,7 @@ Open questions:
 - Selectors: contact mode (§2.2.1), switch transition (§4.1).
 - Sliders: EMA α, close threshold, open threshold, debounce frames, cooldown ms, sync delay Δ, transition collapse/hold/reopen/overshoot (§4.1).
 - Readouts: FPS, state machine state, normalized gap/area, `gap` under all three contact modes at once, Lucy connection state, generation seconds used.
+- Calibration (§4.3): a "run calibration" button, the measured position-1/position-2 `gap` values and the thresholds fitted from them, and the measured Δ per sample plus the median actually in use. Measured values must be visibly distinguishable from defaults, and overridable by the sliders above.
 
 ## 6. Initial prompt library (iterate later)
 
@@ -302,7 +420,8 @@ Written for a video-to-video restyle model — describe the transformation of th
 ## 7. Known risks / open questions
 
 - **Lucy prompt-transition behavior:** how many frames does a `setPrompt` take to fully settle? Measure; if slow, lengthen the required CLOSED hold or crossfade inside the portal.
-- **Lucy latency variance** on real networks; the Δ-buffer is the mitigation.
+- **Lucy latency variance** on real networks; the Δ-buffer is the mitigation, and §4.3's calibration gesture is how Δ gets a real number. Open: Δ may drift *during* a session, in which case a one-shot measurement at the start is not enough and we need periodic re-measurement or a continuous estimator.
+- **Hands may not be trackable in Lucy's output.** §4.3's preferred latency measurement runs a second `HandLandmarker` pass on the returned stream, which assumes the restyled hands still look like hands. A heavy stylisation (pixel-art, watercolour) may break that. Mitigation is already in the design — fall back to pose-template or motion-energy correlation — but detecting the failure rather than silently reporting a wrong Δ is the part to get right.
 - **Hands inside Lucy's output:** Lucy transforms the whole frame including hands — this is fine (inside the portal you *want* transformed hands), but check edge seams where transformed hands meet real hands at the polygon boundary; feathering should help.
 - **Cross-browser desktop support (the risk that actually matters):** Safari on macOS is the one to watch — canvas `filter` (used for the portal feather), `captureStream`, and `MediaRecorder` codec support all differ from Chrome's, and `MediaRecorder` webm output in particular is historically weak there. Test the composite and the Phase 1.5 export in Safari before demoing. Chrome on macOS is the reference implementation.
 - **Mobile browser support (P2, non-blocking):** MediaPipe tasks-vision + WebRTC both work on modern mobile browsers in principle, but this is explicitly not a launch requirement (§3.1). Expect the real obstacles to be sustained framerate under thermal throttling and iOS Safari's camera/autoplay quirks. Try it once the desktop path is done; do not let findings here reshape the desktop build.
