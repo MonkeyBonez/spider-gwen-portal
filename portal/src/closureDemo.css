@@ -1,0 +1,93 @@
+/* Styles specific to closure.html. Layout basics come from demo.css. */
+
+#demo .presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+#demo .presets button {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--fg);
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  cursor: pointer;
+}
+
+#demo .presets button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+#demo .mode-blurb {
+  font-size: 12px;
+  color: var(--muted);
+  align-self: center;
+  max-width: 46ch;
+  line-height: 1.4;
+}
+
+#demo .panels {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+
+/* A panel whose verdict is CLOSED. Deliberately loud: the whole point of the
+   page is spotting which strictnesses disagree at a glance. */
+#demo figure.closed figcaption strong {
+  color: #ff7b7b;
+}
+
+#demo figure.closed canvas {
+  border-color: rgba(255, 90, 90, 0.55);
+}
+
+#demo canvas {
+  touch-action: none;
+  cursor: grab;
+}
+
+#demo .analysis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+#demo .analysis figure {
+  max-width: 320px;
+}
+
+#demo .analysis canvas {
+  cursor: default;
+}
+
+#demo .readouts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  min-width: 240px;
+}
+
+#demo .readout {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+#demo .readout .k {
+  color: var(--muted);
+}
+
+#demo .readout .v {
+  font-variant-numeric: tabular-nums;
+}

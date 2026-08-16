@@ -29,6 +29,14 @@ interface SliderSpec {
 
 const SLIDERS: SliderSpec[] = [
   { key: 'emaAlpha', label: 'EMA α', min: 0.05, max: 1, step: 0.05, hint: '1 = no smoothing' },
+  {
+    key: 'worstSideBias',
+    label: 'Worst-side bias',
+    min: 0,
+    max: 1,
+    step: 0.05,
+    hint: '0 = average the sides · 1 = the wider side decides',
+  },
   { key: 'closeThreshold', label: 'Close threshold', min: 0, max: 2, step: 0.01 },
   { key: 'openThreshold', label: 'Open threshold', min: 0, max: 3, step: 0.01 },
   { key: 'debounceFrames', label: 'Debounce frames', min: 1, max: 15, step: 1 },

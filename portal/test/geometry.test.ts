@@ -11,9 +11,12 @@ import { describe, expect, it } from 'vitest';
 import {
   CONTACT_BLURBS,
   CONTACT_MODES,
+  DEFAULT_WORST_SIDE_BIAS,
+  blendSides,
   normalizedGap,
   polygonArea,
   polygonOrder,
+  sideGaps,
   smoothPortal,
   type PortalPoints,
   type Pt,
@@ -102,10 +105,14 @@ describe('normalised signals', () => {
     expect(normalizedGap(far)).toBeCloseTo(normalizedGap(LEVEL));
   });
 
-  it('gap is the mean of the index and thumb separations over hand size', () => {
+  it('gap is the side separation over hand size', () => {
+    // LEVEL is symmetric (both sides 200px), so this holds at any worst-side bias.
     expect(normalizedGap(LEVEL, 'strict')).toBeCloseTo(200 / 100);
   });
 });
+
+/** The ladder shown in /closure.html, reused as the test sweep. */
+const BIASES = [0, 0.25, 0.5, 0.75, 1];
 
 describe('contact modes (PRD §2.2.1)', () => {
   /**
@@ -168,16 +175,26 @@ describe('contact modes (PRD §2.2.1)', () => {
     expect(normalizedGap(THUMB_HINGE_OPEN, 'paired')).toBeGreaterThan(0.5);
   });
 
-  it('paired never reports more than strict', () => {
+  it('paired never reports more than strict, at any bias', () => {
     // It takes the better of two pairings, one of which is strict's.
     for (const p of [LEVEL, ROTATED, CROSSED_SHUT, THUMB_HINGE_OPEN]) {
-      expect(normalizedGap(p, 'paired')).toBeLessThanOrEqual(normalizedGap(p, 'strict') + 1e-9);
+      for (const bias of BIASES) {
+        expect(normalizedGap(p, 'paired', bias)).toBeLessThanOrEqual(
+          normalizedGap(p, 'strict', bias) + 1e-9,
+        );
+      }
     }
   });
 
-  it('any never reports more than paired', () => {
+  it('any never reports more than paired, at any bias', () => {
+    // `any` is a min over all four cross-hand pairs, so it cannot exceed a blend
+    // of any two of them however the bias weights them.
     for (const p of [LEVEL, ROTATED, CROSSED_SHUT, THUMB_HINGE_OPEN]) {
-      expect(normalizedGap(p, 'any')).toBeLessThanOrEqual(normalizedGap(p, 'paired') + 1e-9);
+      for (const bias of BIASES) {
+        expect(normalizedGap(p, 'any', bias)).toBeLessThanOrEqual(
+          normalizedGap(p, 'paired', bias) + 1e-9,
+        );
+      }
     }
   });
 
@@ -228,5 +245,131 @@ describe('EMA smoothing', () => {
       s = smoothPortal(s, noisy, 0.5);
     }
     expect(Math.abs(s!.lIndex.x - 100)).toBeLessThan(5);
+  });
+});
+
+describe('worst-side bias (PRD §2.2.1)', () => {
+  /**
+   * The reported bug: index fingers 0.6 hand-widths apart while the thumbs
+   * touch. A plain mean averages that to 0.30 — under the 0.35 close threshold —
+   * so the trigger latches CLOSED on a portal that is plainly a wide triangle.
+   */
+  const WIDE_INDEX_THUMBS_SHUT: PortalPoints = {
+    lIndex: { x: 100, y: 100 },
+    rIndex: { x: 160, y: 100 }, // 60px apart = 0.60 hand-widths
+    rThumb: { x: 130.5, y: 200 },
+    lThumb: { x: 130, y: 200 }, // touching
+    handSize: 100,
+  };
+
+  /** A rotated-hand close, where the crossed pairing is the shut one. */
+  const CROSSED_SHUT: PortalPoints = {
+    lIndex: { x: 99, y: 200 },
+    rIndex: { x: 100, y: 100 },
+    rThumb: { x: 101, y: 200 },
+    lThumb: { x: 100, y: 99 },
+    handSize: 100,
+  };
+
+  const CLOSE_THRESHOLD = 0.35; // DEFAULT_CONFIG.closeThreshold
+
+  it('averaging the sides fires the close on a plainly open portal', () => {
+    for (const mode of ['strict', 'paired'] as const) {
+      expect(normalizedGap(WIDE_INDEX_THUMBS_SHUT, mode, 0)).toBeLessThan(CLOSE_THRESHOLD);
+    }
+  });
+
+  it('the default bias rejects it', () => {
+    for (const mode of ['strict', 'paired'] as const) {
+      expect(
+        normalizedGap(WIDE_INDEX_THUMBS_SHUT, mode, DEFAULT_WORST_SIDE_BIAS),
+      ).toBeGreaterThan(CLOSE_THRESHOLD);
+    }
+  });
+
+  it('bias 0 is exactly the mean and bias 1 is exactly the max', () => {
+    for (const [a, b] of [
+      [0.6, 0],
+      [0.4, 0.2],
+      [1, 1],
+      [0, 0],
+    ]) {
+      expect(blendSides(a, b, 0)).toBeCloseTo((a + b) / 2, 10);
+      expect(blendSides(a, b, 1)).toBeCloseTo(Math.max(a, b), 10);
+    }
+  });
+
+  it('is symmetric in its two arguments', () => {
+    for (const bias of BIASES) {
+      expect(blendSides(0.6, 0.1, bias)).toBeCloseTo(blendSides(0.1, 0.6, bias), 10);
+    }
+  });
+
+  /**
+   * The property that makes the bias safe to change without retuning the
+   * close/open thresholds: when both sides agree, mean === max === that value.
+   */
+  it('leaves symmetric poses untouched at every bias', () => {
+    for (const p of [LEVEL, ROTATED]) {
+      const readings = BIASES.map((bias) => normalizedGap(p, 'strict', bias));
+      for (const r of readings) expect(r).toBeCloseTo(readings[0], 10);
+    }
+  });
+
+  it('is monotonically non-decreasing in bias for a lopsided pose', () => {
+    const readings = BIASES.map((b) => normalizedGap(WIDE_INDEX_THUMBS_SHUT, 'strict', b));
+    for (let i = 1; i < readings.length; i++) {
+      expect(readings[i]).toBeGreaterThanOrEqual(readings[i - 1] - 1e-9);
+    }
+    // And it actually moves — a flat sweep would pass the check above vacuously.
+    expect(readings.at(-1)!).toBeGreaterThan(readings[0] + 0.1);
+  });
+
+  it('clamps a bias outside [0,1] rather than extrapolating past the max', () => {
+    expect(blendSides(0.6, 0, -5)).toBeCloseTo(0.3, 10);
+    expect(blendSides(0.6, 0, 99)).toBeCloseTo(0.6, 10);
+  });
+
+  it('does not affect `any`, which has no two sides to weigh', () => {
+    for (const p of [LEVEL, CROSSED_SHUT, WIDE_INDEX_THUMBS_SHUT]) {
+      const readings = BIASES.map((bias) => normalizedGap(p, 'any', bias));
+      for (const r of readings) expect(r).toBeCloseTo(readings[0], 10);
+    }
+  });
+
+  it('sideGaps reports the two sides behind the gap', () => {
+    const s = sideGaps(WIDE_INDEX_THUMBS_SHUT, 'strict');
+    expect(s.a).toBeCloseTo(0.6, 6);
+    expect(s.b).toBeCloseTo(0.005, 6);
+    // And the winning pairing's blend is what `normalizedGap` returned.
+    expect(blendSides(s.a, s.b, DEFAULT_WORST_SIDE_BIAS)).toBeCloseTo(
+      normalizedGap(WIDE_INDEX_THUMBS_SHUT, 'strict', DEFAULT_WORST_SIDE_BIAS),
+      6,
+    );
+  });
+
+  it('sideGaps follows paired mode to the crossed pairing when it wins', () => {
+    const s = sideGaps(CROSSED_SHUT, 'paired');
+    expect(blendSides(s.a, s.b, DEFAULT_WORST_SIDE_BIAS)).toBeCloseTo(
+      normalizedGap(CROSSED_SHUT, 'paired', DEFAULT_WORST_SIDE_BIAS),
+      6,
+    );
+    // The crossed pairing is the shut one, so both its sides are near zero.
+    expect(Math.max(s.a, s.b)).toBeLessThan(0.05);
+  });
+
+  it('still reads a genuine four-point close as shut at every bias', () => {
+    const shut: PortalPoints = {
+      lIndex: { x: 100, y: 100 },
+      rIndex: { x: 101, y: 100 },
+      rThumb: { x: 101, y: 101 },
+      lThumb: { x: 100, y: 101 },
+      handSize: 100,
+    };
+    for (const bias of BIASES) {
+      for (const mode of CONTACT_MODES) {
+        expect(normalizedGap(shut, mode, bias)).toBeLessThan(CLOSE_THRESHOLD);
+      }
+    }
   });
 });

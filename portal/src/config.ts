@@ -1,4 +1,4 @@
-import { CONTACT_MODES, type ContactMode } from './geometry';
+import { CONTACT_MODES, DEFAULT_WORST_SIDE_BIAS, type ContactMode } from './geometry';
 import { TRANSITION_KINDS, type TransitionKind } from './portalTransition';
 
 /**
@@ -28,6 +28,13 @@ export interface Config {
   // --- gesture trigger ------------------------------------------------------
   /** Which cross-hand contacts count as closing the portal (§2.2.1). */
   contactMode: ContactMode;
+  /**
+   * How the portal's two sides combine into one `gap` (§2.2.1).
+   * 0 = average them (one wide side cancels out one tight side); 1 = the wider
+   * side alone decides. Symmetric poses read the same at every value, so this
+   * can be changed without retuning the thresholds below.
+   */
+  worstSideBias: number;
   /** Normalised gap below which the portal counts as "touching"/closed. */
   closeThreshold: number;
   /** Normalised gap above which the portal counts as re-opened (hysteresis). */
@@ -80,6 +87,7 @@ export const DEFAULT_CONFIG: Config = {
   swapHandedness: false,
 
   contactMode: 'paired',
+  worstSideBias: DEFAULT_WORST_SIDE_BIAS,
   closeThreshold: 0.35,
   openThreshold: 0.55,
   debounceFrames: 3,
@@ -121,6 +129,9 @@ export function loadConfig(): Config {
   if (!CONTACT_MODES.includes(cfg.contactMode)) {
     cfg.contactMode = DEFAULT_CONFIG.contactMode;
   }
+  // A bias outside [0,1] would extrapolate past the max and make `gap` nonsense.
+  if (!Number.isFinite(cfg.worstSideBias)) cfg.worstSideBias = DEFAULT_CONFIG.worstSideBias;
+  cfg.worstSideBias = Math.min(1, Math.max(0, cfg.worstSideBias));
   return cfg;
 }
 

@@ -9,6 +9,7 @@ import {
   CONTACT_MODES,
   normalizedArea,
   normalizedGap,
+  sideGaps,
   smoothPortal,
   type PortalPoints,
 } from './geometry';
@@ -136,7 +137,7 @@ export class App {
 
     const handsPresent = hands.portal !== null;
     const gap = this.smoothed
-      ? normalizedGap(this.smoothed, this.cfg.contactMode)
+      ? normalizedGap(this.smoothed, this.cfg.contactMode, this.cfg.worstSideBias)
       : this.prevGap;
     const area = this.smoothed ? normalizedArea(this.smoothed) : 0;
 
@@ -217,7 +218,17 @@ export class App {
         // All three contact modes at once, so picking one is observation rather
         // than guesswork — they are on different scales (§2.2.1).
         'gap s/p/a': this.smoothed
-          ? CONTACT_MODES.map((m) => normalizedGap(this.smoothed!, m).toFixed(2)).join(' / ')
+          ? CONTACT_MODES.map((m) =>
+              normalizedGap(this.smoothed!, m, this.cfg.worstSideBias).toFixed(2),
+            ).join(' / ')
+          : '—',
+        // The two sides behind that number. A lopsided pair here is the case the
+        // worst-side bias exists to reject (§2.2.1).
+        'sides a/b': this.smoothed
+          ? (() => {
+              const s = sideGaps(this.smoothed!, this.cfg.contactMode, this.cfg.worstSideBias);
+              return `${s.a.toFixed(2)} / ${s.b.toFixed(2)}`;
+            })()
           : '—',
         transition: transition.phase,
         closure: transition.closure.toFixed(2),

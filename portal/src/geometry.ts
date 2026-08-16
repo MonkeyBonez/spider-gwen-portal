@@ -92,39 +92,111 @@ export const CONTACT_BLURBS: Record<ContactMode, string> = {
 };
 
 /**
+ * How the two sides of the portal combine into one number (PRD §2.2.1).
+ *
+ * A plain mean lets one side cancel out the other: index fingers 0.6 hand-widths
+ * apart with the thumbs touching averages to 0.30, under a 0.35 close threshold,
+ * so a visibly open triangle latches CLOSED. `bias` interpolates away from that:
+ *
+ *   bias = 0  →  the mean. Exactly the old behaviour.
+ *   bias = 1  →  `Math.max`, exactly — algebra, not approximation:
+ *                mean + (max − mean) = max. Closed then means *both* sides are
+ *                closed and a long side vetoes the close outright.
+ *
+ * Between the two, a long side forces the short one to be much smaller before the
+ * close counts, which is the point.
+ *
+ * The property that makes this safe to add: for a symmetric pose (a === b) the
+ * mean and the max are both `a`, so the reading is identical at every bias. Only
+ * lopsided poses move, so the close/open thresholds do not need retuning.
+ */
+export function blendSides(a: number, b: number, bias: number): number {
+  const k = Math.min(1, Math.max(0, bias));
+  const mean = (a + b) / 2;
+  return mean + (Math.max(a, b) - mean) * k;
+}
+
+/** Provisional until the ladder in `/closure.html` settles it (PRD §2.2.1). */
+export const DEFAULT_WORST_SIDE_BIAS = 0.7;
+
+/** The two cross-hand distances each pairing is built from, in pixels. */
+function pairings(p: PortalPoints) {
+  return {
+    parallel: [dist(p.lIndex, p.rIndex), dist(p.lThumb, p.rThumb)] as const,
+    crossed: [dist(p.lIndex, p.rThumb), dist(p.lThumb, p.rIndex)] as const,
+  };
+}
+
+/**
  * `gap` = separation between the hands, normalised by hand size so it is
  * camera-distance invariant (PRD §2.2).
  *
  * Note that the three modes are on different scales — `any` reports roughly half
  * what `strict` does for the same pose, because it takes a minimum rather than a
  * mean. The close/open thresholds have to be retuned when the mode changes.
+ * Changing `bias` does *not* require retuning; see `blendSides`.
  */
-export function normalizedGap(p: PortalPoints, mode: ContactMode = 'paired'): number {
-  const parallel = (dist(p.lIndex, p.rIndex) + dist(p.lThumb, p.rThumb)) / 2;
+export function normalizedGap(
+  p: PortalPoints,
+  mode: ContactMode = 'paired',
+  bias: number = DEFAULT_WORST_SIDE_BIAS,
+): number {
+  const { parallel, crossed } = pairings(p);
+  const blend = (pair: readonly [number, number]) => blendSides(pair[0], pair[1], bias);
 
   let g: number;
   switch (mode) {
     case 'strict':
-      g = parallel;
+      g = blend(parallel);
       break;
     case 'any':
       // Every cross-hand pair among the portal points. Same-hand pairs are
       // excluded: index-to-own-thumb says nothing about the hands meeting.
-      g = Math.min(
-        dist(p.lIndex, p.rIndex),
-        dist(p.lIndex, p.rThumb),
-        dist(p.lThumb, p.rIndex),
-        dist(p.lThumb, p.rThumb),
-      );
+      // No two-sided notion here, so `bias` does not apply.
+      g = Math.min(...parallel, ...crossed);
       break;
     case 'paired':
-    default: {
-      const crossed = (dist(p.lIndex, p.rThumb) + dist(p.lThumb, p.rIndex)) / 2;
-      g = Math.min(parallel, crossed);
+    default:
+      // The blend combines the two sides *within* a pairing; the min still picks
+      // *between* the parallel and crossed pairings.
+      g = Math.min(blend(parallel), blend(crossed));
       break;
-    }
   }
   return p.handSize > 0 ? g / p.handSize : 0;
+}
+
+/**
+ * The two normalised side separations behind the current `gap`, for readouts.
+ *
+ * `strict` always reports the parallel pairing; `paired` reports whichever
+ * pairing won. `any` has no two sides — it returns the single closest cross-hand
+ * pair as both values, so a caller rendering "a / b" shows a matched pair rather
+ * than something misleading.
+ */
+export function sideGaps(
+  p: PortalPoints,
+  mode: ContactMode = 'paired',
+  bias: number = DEFAULT_WORST_SIDE_BIAS,
+): { a: number; b: number } {
+  const { parallel, crossed } = pairings(p);
+  const scale = p.handSize > 0 ? p.handSize : 1;
+  const norm = (pair: readonly [number, number]) => ({ a: pair[0] / scale, b: pair[1] / scale });
+
+  switch (mode) {
+    case 'strict':
+      return norm(parallel);
+    case 'any': {
+      const closest = Math.min(...parallel, ...crossed) / scale;
+      return { a: closest, b: closest };
+    }
+    case 'paired':
+    default:
+      return norm(
+        blendSides(parallel[0], parallel[1], bias) <= blendSides(crossed[0], crossed[1], bias)
+          ? parallel
+          : crossed,
+      );
+  }
 }
 
 /** Polygon area normalised by hand size squared. */

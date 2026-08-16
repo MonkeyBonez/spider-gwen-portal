@@ -44,6 +44,7 @@ HTTP, so it needs a tunnel (`ngrok http 5173`) or an HTTPS dev server.
 | `src/debugPanel.ts` | live thresholds, readouts, rolling gap plot |
 | `src/dimensions.ts` | colour + prompt per dimension (prompts unused until Phase 1) |
 | `/transitions.html` | all six transitions side by side on synthetic hands |
+| `/closure.html` | close detection at five strictnesses side by side — drag the 4 points |
 | `/verify.html` | standalone geometry harness — drag the 4 points |
 
 ## Verifying the exit criteria
@@ -93,6 +94,29 @@ The three are on different scales (`any` takes a minimum where `strict` takes a
 mean), so **retune the close/open thresholds after changing mode** — don't carry the
 numbers across. The panel readout `gap s/p/a` shows all three at once, so you can
 watch how each responds to your actual hands before committing.
+
+### Worst-side bias (PRD §2.2.1)
+
+How the portal's two sides collapse into one `gap`. Averaging them lets a wide side be
+cancelled out by a tight one: index fingers 0.6 hand-widths apart with the thumbs
+touching averages to 0.30, under the 0.35 close threshold, so a plainly open triangle
+fires the switch.
+
+`Worst-side bias` interpolates away from that — `0` is the plain mean, `1` is exactly
+`max`, meaning both sides must be shut and a long side vetoes the close outright.
+In between, a long side forces the short one much smaller before the close counts.
+
+**Symmetric poses read the same at every bias** (when both sides agree, mean and max
+are the same number), so unlike a contact-mode change this can be tuned **without
+retuning the thresholds**, and a normal four-points-together close is unaffected.
+
+Compare them at **`/closure.html`**: the same pose at bias 0, 0.25, 0.5, 0.75 and 1,
+side by side, plus a map of exactly which side-pairs read as closed. Click the
+*wide index · thumbs shut* preset — the bias-0 panel reads CLOSED and the rest read
+open, which is the whole bug and the whole fix on one screen. Default is `0.7`,
+provisional until it's been judged there and on real hands.
+
+Watch `sides a/b` in the live panel to see the asymmetry with your own hands.
 
 The switch always fires **on close**, never on opening — reopening only re-arms for
 the next cycle. That is fixed, not a setting: the closed portal is the only moment

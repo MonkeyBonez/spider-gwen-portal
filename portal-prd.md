@@ -95,6 +95,47 @@ open thresholds must be retuned whenever the mode changes — do not carry numbe
 across. The debug panel shows all three values simultaneously (`gap s/p/a`) so the
 choice can be made by observation.
 
+##### How the two sides combine: worst-side bias
+
+The mode above picks *which* two distances to measure. This is the separate question
+of how those two collapse into one `gap`, and the original answer — a plain mean —
+has its own bug (Sne, from live testing): **a wide side gets cancelled out by a tight
+one, so the close fires too early.**
+
+Worked: index fingers 0.60 hand-widths apart with the thumbs touching gives
+`(0.60 + 0.00) / 2 = 0.30`, under the 0.35 close threshold. The portal is plainly an
+open triangle and the machine latches CLOSED. This is a different failure from the
+hinge above, which is extreme enough that even the mean reads open; this one lives in
+the moderate middle, where one side is merely *fairly* wide.
+
+The requirement: **when one side is long, the other must be much smaller before the
+close counts.** Implemented as a single tunable, `worstSideBias` ∈ [0, 1]:
+
+```
+gap = mean + bias * (max − mean)
+```
+
+| bias | Behaviour |
+| --- | --- |
+| 0 | the plain mean — the old behaviour, kept as the control case |
+| 1 | exactly `max`, algebraically. Closed means *both* sides are closed; a long side vetoes the close outright |
+| between | a long side forces the short one much smaller. At 0.7 a side at 0.4 can still close if the other is near zero; a side at 0.5 cannot close at all |
+
+Two properties worth relying on:
+
+- **Symmetric poses read identically at every bias.** When both sides agree, the mean
+  and the max are the same number. So the fully-open and fully-shut readings don't
+  move, and unlike a contact-mode change **this needs no threshold retuning**. The
+  four-points-converging-together case — the one that already worked — is provably
+  untouched.
+- **The bias applies within a pairing, not across pairings.** `paired` still takes the
+  `min` of the parallel and crossed pairings; the blend just combines the two sides
+  inside each. `any` is unaffected, having no notion of two sides.
+
+**The value is deferred**, like the transition variant in §4.1. `/closure.html` runs
+the same pose at bias 0, 0.25, 0.5, 0.75 and 1 side by side, with a map of which
+side-pairs read as closed, so the pick is made by eye. Provisional default 0.7.
+
 ### 2.3 Sync / latency alignment
 
 - Lucy realtime is marketed at sub-40ms inference latency at 30fps over WebRTC; real end-to-end latency = inference + network RTT, and will vary. Treat total delay as an unknown to measure, not a constant.
@@ -371,8 +412,8 @@ say so before they record rather than after.
 
 - Landmark overlay on/off; portal polygon outline on/off. (In Phase 1.5 this overlay grows into the performer-facing skeleton indicator — see §4.2 — so build it as one component, not two.)
 - Selectors: contact mode (§2.2.1), switch transition (§4.1).
-- Sliders: EMA α, close threshold, open threshold, debounce frames, cooldown ms, sync delay Δ, transition collapse/hold/reopen/overshoot (§4.1).
-- Readouts: FPS, state machine state, normalized gap/area, `gap` under all three contact modes at once, Lucy connection state, generation seconds used.
+- Sliders: EMA α, worst-side bias (§2.2.1), close threshold, open threshold, debounce frames, cooldown ms, sync delay Δ, transition collapse/hold/reopen/overshoot (§4.1).
+- Readouts: FPS, state machine state, normalized gap/area, `gap` under all three contact modes at once, the two side separations behind the current `gap` (`sides a/b` — a lopsided pair is the case the worst-side bias exists to reject), Lucy connection state, generation seconds used.
 - Calibration (§4.3): a "run tutorial" button, the measured position-1/position-2 `gap` values, and the thresholds fitted from them. Fitted values must be visibly distinguishable from defaults, and overridable by the sliders above.
 - Latency (§2.3.1): a "measure latency" action that enables `debugQuality` briefly and reads back `ttffMs` / `g2gMs` / `g2gDropRatio`, with the Δ actually in use shown alongside. Later, if built: the live `onConnectionQuality` verdict and its `limitingFactor`.
 
