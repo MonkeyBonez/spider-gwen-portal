@@ -89,7 +89,7 @@ const SLIDERS: SliderSpec[] = [
     min: 0,
     max: 4000,
     step: 100,
-    hint: 'colour-only time after the prompt is sent · counted from the request, so holding the close eats into it',
+    hint: 'fallback only — the reveal normally fires when the change is detected on screen · this caps the wait if it is not',
   },
   {
     key: 'revealFadeMs',

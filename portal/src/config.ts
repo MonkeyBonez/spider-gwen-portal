@@ -142,12 +142,14 @@ export interface Config {
    */
   revealFromColor: boolean;
   /**
-   * How long to hold the flat colour after the prompt is sent, before the
-   * cross-fade begins. **Timed from the request, not from the portal opening**,
-   * which is the important part: holding your hands closed longer spends this
-   * budget, so a long enough hold reveals the settled stream with no fade at
-   * all — the gesture masks the change exactly as originally intended, just at
-   * a duration the performer controls.
+   * **Fallback only.** The reveal normally starts the instant the restyle is
+   * detected on screen (see `settleProbe.ts`), which is what keeps dead colour
+   * down to a single 50ms sampling period. This timer is the ceiling for the
+   * cases detection cannot cover — a cold start with no frames to compare, or a
+   * restyle too subtle to spike — so it should rarely be what fires.
+   *
+   * Counted from the request, so holding your hands closed spends the same
+   * budget: a long enough hold reveals with no fade at all.
    */
   revealHoldMs: number;
   /**

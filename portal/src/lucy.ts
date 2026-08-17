@@ -323,6 +323,18 @@ export class LucySession {
    * recorded — that ack is *not* the same as the output visibly settling, which
    * is the number PRD §7 actually wants, but it is the floor for it.
    */
+  /** Set when the probe sees the restyle land, in `performance.now()` terms. */
+  private changeSeenAt: number | null = null;
+
+  /**
+   * When the last prompt visibly took effect, or null if it has not yet.
+   * Driven by pixels, because the SDK has no signal for it — `setPrompt`
+   * resolves on receipt, not on application.
+   */
+  get promptVisibleAt(): number | null {
+    return this.changeSeenAt;
+  }
+
   async setPrompt(prompt: string, label?: string): Promise<void> {
     if (!this.client) return;
     const at = performance.now();
@@ -334,10 +346,21 @@ export class LucySession {
     sessionLog.log('prompt:sent', { label, prompt });
     // Start measuring the *visible* change, which is the number the gesture
     // design actually depends on — the ack below is only the request landing.
+    this.changeSeenAt = null;
     if (this.frame) {
-      this.settle.start(this.frame, (samples) =>
-        sessionLog.log('prompt:settle', { label, samples }),
+      this.settle.start(
+        this.frame,
+        (samples, detectedAtMs) =>
+          sessionLog.log('prompt:settle', { label, detectedAtMs, samples }),
+        () => {
+          this.changeSeenAt = performance.now();
+        },
       );
+    } else {
+      // No frames to watch — a cold start or a dropped stream. Leave it null so
+      // the reveal falls back to its timer rather than waiting on a detector
+      // that can never fire.
+      this.changeSeenAt = 0;
     }
     try {
       await this.client.setPrompt(prompt, { enhance: false });

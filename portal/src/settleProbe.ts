@@ -6,12 +6,17 @@
  * arrive later still, so the portal has reopened long before the new dimension
  * appears. The gesture cannot mask a swap it finishes before.
  *
- * **It records a curve rather than deciding.** The obvious approach — threshold
- * a frame-difference signal and declare "settled" — needs a threshold nobody
- * has data to choose, and the subject is moving the whole time, so hand motion
- * and restyling both show up as change. So this samples cheaply, logs the
- * series, and leaves the judgement to whoever reads the log. Once the shape is
- * known, a detector can be written against it.
+ * **It also detects the change live**, which is what the reveal cross-fade is
+ * driven from. The SDK cannot help here: `setPrompt` resolves on a `prompt_ack`
+ * websocket message, which confirms the server *received* the prompt, not that
+ * the output has changed. Nothing in the API marks an output frame as belonging
+ * to a prompt. So the pixels are the only source of truth.
+ *
+ * The threshold was chosen from measured curves rather than invented: across
+ * five switches the frame-to-frame difference sat at 0–21 while the subject
+ * moved, then spiked to 52–94 in a single sample as the restyle landed. The
+ * rule below wants both an absolute floor and a multiple of the running
+ * baseline, so a large but gradual movement cannot trip it.
  *
  * Two signals per sample:
  * - `vsPrompt` — difference from the frame at the instant the prompt was sent.
@@ -24,8 +29,22 @@
 /** Sampling resolution. Tiny on purpose: this must not cost a frame. */
 const W = 32;
 const H = 18;
-const INTERVAL_MS = 100;
+// 50ms rather than 100: this now gates the reveal, so the sampling period is
+// dead colour on screen. A 32×18 getImageData twice as often is nothing.
+const INTERVAL_MS = 50;
 const DURATION_MS = 6000;
+
+/**
+ * Frame-to-frame difference that counts as the restyle landing.
+ *
+ * Floor: the smallest measured spike was 52 and the largest motion-only
+ * baseline was 21, so 35 sits between them with room either side.
+ */
+const SPIKE_FLOOR = 35;
+/** ...and it must also be this many times the recent baseline. */
+const SPIKE_RATIO = 3;
+/** Baseline never goes below this, so the ratio test can't divide by noise. */
+const BASELINE_FLOOR = 5;
 
 export interface SettleSample {
   /** ms since the prompt was sent. */
@@ -45,6 +64,8 @@ export class SettleProbe {
   private startedAt = 0;
   private timer = 0;
   private onDone: ((samples: SettleSample[]) => void) | null = null;
+  private onChange: (() => void) | null = null;
+  private detectedAt: number | null = null;
 
   constructor() {
     this.canvas.width = W;
@@ -63,15 +84,21 @@ export class SettleProbe {
    * Begin measuring. `source` must already be producing frames; if it is not,
    * the run is abandoned rather than recording a curve of zeros.
    */
-  start(source: HTMLVideoElement, onDone: (samples: SettleSample[]) => void): void {
+  start(
+    source: HTMLVideoElement,
+    onDone: (samples: SettleSample[], detectedAtMs: number | null) => void,
+    onChange?: () => void,
+  ): void {
     this.stop();
     const frame = this.grab(source);
     if (!frame) return;
     this.atPrompt = frame;
     this.previous = frame;
     this.samples = [];
+    this.detectedAt = null;
     this.startedAt = performance.now();
-    this.onDone = onDone;
+    this.onDone = onDone as (samples: SettleSample[]) => void;
+    this.onChange = onChange ?? null;
     this.timer = window.setInterval(() => this.tick(source), INTERVAL_MS);
   }
 
@@ -79,6 +106,7 @@ export class SettleProbe {
     if (this.timer) window.clearInterval(this.timer);
     this.timer = 0;
     this.onDone = null;
+    this.onChange = null;
   }
 
   private tick(source: HTMLVideoElement): void {
@@ -92,13 +120,36 @@ export class SettleProbe {
         vsPrev: round1(meanAbsDiff(frame, this.previous)),
       });
       this.previous = frame;
+      this.detect(elapsed);
     }
     if (elapsed >= DURATION_MS) {
-      const done = this.onDone;
+      const done = this.onDone as
+        | ((samples: SettleSample[], detectedAtMs: number | null) => void)
+        | null;
       const samples = this.samples;
+      const detectedAt = this.detectedAt;
       this.stop();
-      done?.(samples);
+      done?.(samples, detectedAt);
     }
+  }
+
+  /**
+   * Fire once, on the sample where the restyle lands.
+   *
+   * The baseline is the median of everything before this sample rather than a
+   * mean, so the spike itself — and any single large movement earlier in the
+   * window — cannot drag the reference up and mask a later change.
+   */
+  private detect(elapsed: number): void {
+    if (this.detectedAt !== null || this.samples.length < 2) return;
+    const latest = this.samples[this.samples.length - 1].vsPrev;
+    const prior = this.samples.slice(0, -1).map((s) => s.vsPrev).sort((a, b) => a - b);
+    const baseline = Math.max(BASELINE_FLOOR, prior[Math.floor(prior.length / 2)]);
+    if (latest < SPIKE_FLOOR || latest < baseline * SPIKE_RATIO) return;
+    this.detectedAt = elapsed;
+    const fire = this.onChange;
+    this.onChange = null;
+    fire?.();
   }
 
   /** Downscaled luma of the current frame, or null if nothing has decoded. */

@@ -496,7 +496,12 @@ export class App {
       // fully live. If it reaches 100% before the portal reopens, the change
       // was masked completely.
       reveal: this.cfg.revealFromColor
-        ? `${Math.round(this.revealAlpha(performance.now()) * 100)}%`
+        ? (() => {
+            const seen = this.lucy?.promptVisibleAt ?? null;
+            const pct = Math.round(this.revealAlpha(performance.now()) * 100);
+            const how = seen === null ? 'waiting' : seen > 0 ? 'detected' : 'no stream';
+            return `${pct}% (${how})`;
+          })()
         : 'off (cut straight to stream)',
       'sync Δ': this.cfg.syncDelayMs > 0
         ? `${this.cfg.syncDelayMs}ms applied · ${Math.round(this.delay.capacityMs)}ms held (${this.delay.size}f)`
@@ -579,11 +584,25 @@ export class App {
    */
   private revealAlpha(t: number): number {
     if (!this.cfg.revealFromColor || this.promptRequestedAt <= 0) return 1;
-    const since = t - this.promptRequestedAt;
-    const hold = this.cfg.revealHoldMs;
-    if (since <= hold) return 0;
+
+    // Preferred: start fading the moment the restyle is actually on screen, so
+    // there is no dead colour beyond one 50ms sampling period. The SDK cannot
+    // tell us this — `setPrompt` acks receipt, not application — so it comes
+    // from watching the pixels (see settleProbe.ts).
+    const seen = this.lucy?.promptVisibleAt ?? null;
+    let fadeFrom = seen && seen > 0 ? seen : null;
+
+    // Fallback: a timer, for when detection cannot run or misses — a cold
+    // start with no frames to compare, or a restyle too subtle to spike. It is
+    // a ceiling on the wait, not the normal path.
+    if (fadeFrom === null) {
+      const elapsed = t - this.promptRequestedAt;
+      if (elapsed <= this.cfg.revealHoldMs) return 0;
+      fadeFrom = this.promptRequestedAt + this.cfg.revealHoldMs;
+    }
+
     if (this.cfg.revealFadeMs <= 0) return 1;
-    return Math.min(1, (since - hold) / this.cfg.revealFadeMs);
+    return Math.min(1, Math.max(0, (t - fadeFrom) / this.cfg.revealFadeMs));
   }
 
   /**
