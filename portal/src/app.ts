@@ -365,7 +365,10 @@ export class App {
       this.delay.push(
         this.video, w, h, rendered, this.opacity, t,
         this.cfg.syncDelayMs,
-        this.fps > 1 ? 1000 / this.fps : 33,
+        // The camera's interval, not the render loop's: the buffer stores one
+        // copy per distinct camera frame, so that is what sets how many slots
+        // a given delay needs. Our loop runs at 60fps against a 30fps camera.
+        1000 / Math.max(1, this.cfg.captureFps),
       );
       const s = this.delay.sample(t, this.cfg.syncDelayMs);
       if (s) {

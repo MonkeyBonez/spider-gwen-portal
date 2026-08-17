@@ -15,17 +15,17 @@
  *
  * **Frames are copied into canvases, not held as `VideoFrame`s.** WebCodecs
  * would be cheaper, but holding a couple of dozen frames from a live
- * `MediaStreamTrack` can exhaust the capture pool and stall the camera — and
- * this app is already short on frames (~14fps), so trading frame rate for
+ * `MediaStreamTrack` can exhaust the capture pool and stall the camera. The
+ * stream is already running at half the camera's rate, so trading frames for
  * memory would be the wrong way round.
  */
 
 import type { PortalPoints } from './geometry';
 
 /**
- * Hard cap on retained frames. At 30fps this is ~1.3s of delay, comfortably
- * past the measured Δ; at 1280×720 it is roughly 145MB of canvas, which is the
- * real reason for a cap.
+ * Hard cap on retained frames. Since only distinct camera frames are stored,
+ * at 30fps this is ~1.3s of delay — comfortably past the measured ~730ms Δ. At
+ * 1280×720 it is roughly 145MB of canvas, which is the real reason for a cap.
  */
 const MAX_FRAMES = 40;
 
@@ -46,12 +46,24 @@ export class DelayBuffer {
   private height = 0;
   /** Largest delay the ring could actually satisfy on the last sample, ms. */
   private achievableMs = 0;
+  /**
+   * `currentTime` of the last frame stored, used to skip repeats.
+   *
+   * The render loop runs at the display's 60fps while the camera delivers 30
+   * (measured 2026-08-16), so half of all pushes would otherwise store a
+   * duplicate of the previous frame. That is not merely wasteful: at 60 stores
+   * a second, 730ms of delay needs 46 slots, over the 40-frame cap — so the
+   * buffer would silently under-delay and the seam it exists to fix would stay
+   * broken. Storing one copy per distinct camera frame halves the requirement.
+   */
+  private lastSourceTime = -1;
 
   /** Discard everything — on resize, or when compensation is switched off. */
   reset(): void {
     this.frames = [];
     this.next = 0;
     this.achievableMs = 0;
+    this.lastSourceTime = -1;
   }
 
   /** How much delay the buffer can currently deliver. Below the requested Δ
@@ -66,14 +78,11 @@ export class DelayBuffer {
   }
 
   /**
-   * Record the current instant. Call once per rendered frame, before sampling.
-   *
-   * Sized from the *observed* frame interval rather than the requested fps:
-   * this app runs well under 30fps, and allocating for a rate we never hit
-   * would waste tens of megabytes to hold frames we could have kept anyway.
+   * Record the current instant. Call once per rendered frame, before sampling;
+   * repeated calls within one camera frame are ignored.
    */
   push(
-    source: CanvasImageSource,
+    source: HTMLVideoElement,
     width: number,
     height: number,
     portal: PortalPoints | null,
@@ -83,12 +92,17 @@ export class DelayBuffer {
     frameIntervalMs: number,
   ): void {
     if (width === 0 || height === 0) return;
+    // One stored copy per distinct camera frame — see `lastSourceTime`.
+    if (source.currentTime === this.lastSourceTime) return;
+    this.lastSourceTime = source.currentTime;
     if (width !== this.width || height !== this.height) {
       this.width = width;
       this.height = height;
       this.reset();
     }
 
+    // Sized from the *camera* interval, not the render interval, since that is
+    // now the rate at which slots are consumed.
     const wanted = Math.min(
       MAX_FRAMES,
       // +2 so there is a frame either side of the target instant to pick from,
