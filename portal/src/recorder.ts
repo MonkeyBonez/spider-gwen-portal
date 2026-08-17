@@ -33,6 +33,12 @@ import { sessionLog } from './sessionLog';
 const CHUNK_MS = 2000;
 
 /**
+ * Recording bitrate per stream. Deliberately modest — see the note where the
+ * recorder is constructed. Analysis wants legible motion, not archival quality.
+ */
+const BITS_PER_SECOND = 2_000_000;
+
+/**
  * Preference order. vp8 first: it is the most reliably seekable in the tools
  * likely to open these (browsers, ffmpeg, QuickTime via conversion), and
  * analysis wants scrubbing more than it wants compression.
@@ -99,7 +105,15 @@ export class StreamRecorder {
       // Video only. Audio is not part of any question being asked here, and a
       // second track would complicate frame-accurate alignment for no gain.
       const videoOnly = new MediaStream(tracks);
-      const recorder = new MediaRecorder(videoOnly, { mimeType });
+      // Capped well below what MediaRecorder would choose for 720p. Recording
+      // two streams is not free: with both running, outbound frame rate fell
+      // from ~27 to ~20 and Δ rose ~30ms (2026-08-17). The measurement should
+      // disturb the thing being measured as little as possible, and for reading
+      // motion and prompt changes off the footage this is plenty of bitrate.
+      const recorder = new MediaRecorder(videoOnly, {
+        mimeType,
+        videoBitsPerSecond: BITS_PER_SECOND,
+      });
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) this.upload(e.data);
       };

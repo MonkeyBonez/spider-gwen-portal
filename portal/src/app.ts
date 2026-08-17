@@ -210,6 +210,8 @@ export class App {
       return;
     }
 
+    this.toast(`Lucy live · ${this.cfg.lucyCodec}${this.cfg.recordStreams ? ' · recording' : ''}`);
+
     // Deliberately outside the try above. Recording is diagnostics; it must
     // never be able to fail the session it is observing — which is exactly what
     // happened on 2026-08-17, when MediaRecorder threw on a remote track that
