@@ -1,8 +1,8 @@
 # Portal — Real-Time Spider-Verse Dimension Portal (PRD + Build Context)
 
-**Status:** **Phase 0 complete** — exit criteria tested and signed off by Sne, 2026-08-16 (`portal/`). **Phase 1 in progress:** Decart API key obtained, and the SDK surface verified directly against `@decartai/sdk@0.1.21` (§2.3.1, §3) — which corrected this document's latency section and raised the expected Δ from ~100ms to 300–600ms (§2.3, §7). This document is the full context for the project. Read it entirely before writing code.
+**Status:** **Phase 0 complete** — exit criteria tested and signed off by Sne, 2026-08-16 (`portal/`). **Phase 1 in progress:** Lucy is live in the portal. Δ **measured at ~600ms** over four instrumented runs, ~85% of it Decart's inference (§2.3.1) — so latency is a constraint to design around, not a bug to fix. This document is the full context for the project. Read it entirely before writing code.
 **Owner:** Sne
-**Last updated:** 2026-08-16
+**Last updated:** 2026-08-17
 
 ---
 
@@ -196,13 +196,13 @@ Provisional default 0.7.
 
 ### 2.3 Sync / latency alignment
 
-- **Δ is much larger than the marketing number.** Lucy realtime is marketed at sub-40ms inference at 30fps, but the SDK's own quality bands (verified in the shipped code, §2.3.1) rate glass-to-glass **≤500ms as "good", ≤900ms "fair", ≤1500ms "poor"**, with a source comment citing a server-side pipeline median of ~285ms. So plan for Δ in the **300–600ms** range, not ~100ms, and treat the marketed figure as inference alone on Decart's own hardware. Measure before designing around any number.
+- **Δ is ~600ms, measured (§2.3.1).** Lucy realtime is marketed at sub-40ms inference; treat that as inference alone on Decart's own hardware. The SDK's own quality bands rate glass-to-glass ≤500ms "good" / ≤900ms "fair" / ≤1500ms "poor", so ~600ms is a normal result rather than a broken session. **~85% of it is their inference**, leaving nothing meaningful for us to reclaim.
 - The portal mask is computed locally (~1 frame). The Lucy stream arrives delayed. If we composite naively, the transformed self lags the mask.
 - **Approach, in order:**
   1. **V1: composite live, no compensation.** May look fine at small delays. Ship this first and evaluate visually.
   2. **V2: delay the raw feed + mask by an estimated Δ** to align with Lucy's stream. Implement a ring buffer of (frame, landmarks, timestamp) and render from `now − Δ`. Δ is a user-tunable slider in the debug panel (0–500ms). Investigate whether the Decart SDK exposes latency/stats (WebRTC `getStats()` RTT is a fallback estimator).
      - **Where the estimate comes from: the SDK, not us.** See §2.3.1.
-  3. ~~Note: delaying the *entire displayed output* by Δ is acceptable — the user is performing to camera, a uniform ~100ms display delay is not noticeable in the recording.~~ **This assumption does not survive a Δ of 300–600ms.** It is true that the *recording* is unharmed — every frame is internally consistent, and nobody watching it can tell when it was captured. What breaks is the **monitor**: the performer sees their own hands up to half a second late, which is well past the point where hand–eye feedback stops working. Framing a portal to a delayed preview is like singing with headphone delay.
+  3. ~~Note: delaying the *entire displayed output* by Δ is acceptable — the user is performing to camera, a uniform ~100ms display delay is not noticeable in the recording.~~ **This assumption does not survive a measured Δ of ~600ms.** It is true that the *recording* is unharmed — every frame is internally consistent, and nobody watching it can tell when it was captured. What breaks is the **monitor**: the performer sees their own hands up to half a second late, which is well past the point where hand–eye feedback stops working. Framing a portal to a delayed preview is like singing with headphone delay.
   4. **So the two options are both worse than this section assumed, and the choice is now a real one:**
      - **V1 (composite live)** keeps the monitor honest, and pays at the *seam*: the portal polygon tracks the live fingertips while the pixels inside it are Δ old, so transformed hands inside the frame sit half a second behind the real hands bordering it. How bad that looks is an empirical question — feathering helps, and "the other universe runs slightly behind ours" is not an unreasonable thing for a portal to do.
      - **V2 (delay everything by Δ)** makes the seam perfect and the monitor laggy.
@@ -271,23 +271,47 @@ button and refuse gracefully on `"critical"`. Its `{ deep: true, model }` form o
 short session with a synthetic source to measure actual `g2gMs`/`ttffMs` before committing —
 **that one costs GPU seconds**, so it is a debug-panel action, never something that runs on load.
 
-**Measured on real hardware, 2026-08-16: Sne reports a visible 1–2s lag between the portal
-contents and reality.** That is worse than the 300–600ms estimated above and past the SDK's own
-"poor" band, so it is now the blocking problem for Phase 1 — at that size the effect does not
-read as a portal at all. Instrumentation was built rather than guessing: the debug panel now
-splits Δ into encode / RTT+path / inference / jitter buffer / decode, and a **session log**
-(`src/sessionLog.ts`, `G` to save) records every `stats` sample as NDJSON so a run can be read
-back afterwards. The candidate causes, in the order they are worth checking:
+**Measured on real hardware, 2026-08-16 — this section is now results, not speculation.**
+Four instrumented runs, logged to NDJSON (`src/sessionLog.ts`, written automatically under
+`npm run dev`). Δ was first reported as a felt "1–2 seconds"; the measurement came out at
+**724ms**, and a frame count off a 60fps screen recording independently gave **733ms**. Those
+agree, so the instrumentation is trusted and the original estimate was perceptual inflation —
+understandable, since ~730ms of delay sat on top of a stream running at half frame rate.
 
-| Candidate | Signal in the log | What it would mean |
+**Δ is now ~600ms after switching the publish codec to vp9** (§3). Where it goes:
+
+| Leg | Cost | Ours to fix? |
 | --- | --- | --- |
-| **Uplink saturated** | `outboundVideo.qualityLimitationReason: "bandwidth"`, outbound fps well under 30 | The SDK publishes h264 at up to **3.5 Mbps, 720p30** (`config-realtime.js`), and a link that can't hold that queues frames at the encoder. Fix is ours: publish a downscaled track via `replaceVideoTrack` while the local canvas stays 720p. |
-| **Receiver jitter buffer** | `jitterBufferTargetDelayMs` in the hundreds | The browser is holding frames to smooth variance. LiveKit exposes `setPlayoutDelay`, but **the SDK does not expose its Room**, so this would need an SDK change or an upstream request. |
-| **Inference** | `unaccounted` ≈ Δ | Decart's own median is ~285ms; a much larger remainder means the model is the bottleneck and no code here fixes it. Escalate, try another model, or design around it. |
-| **Relayed path** | `path` shows `relay` | TURN instead of direct UDP. Network-level, not code. |
+| Encode | 2.0ms (vp9; was 7.1ms on h264) | Fixed — see below |
+| RTT | ~8ms | No, and irrelevant at this size |
+| **Decart's inference** | **~500ms** | **No.** Their own median is ~285ms; we see roughly double |
+| Receiver jitter buffer | ~88ms | Only via `setPlayoutDelay`, which the SDK does not expose |
+| Decode | ~3ms | No |
 
-**Also check whether Δ grows across a run** — a constant number is pipeline latency, a climbing
-one is a buffer filling, and those have different fixes.
+**So ~85% of the delay is Decart's model, and the floor for anything we can build is ~600ms.**
+The portal contents will never track the hands in real time. That is a property of the product,
+not a bug still to be found, and §2.3's V1-vs-V2 question is therefore a decision about *where to
+put* the delay rather than how to remove it.
+
+**vp9 over h264, measured.** The SDK sets `simulcast: codec !== 'vp9'`, so h264 publishes three
+layers and Chrome encoded all three in software (`SimulcastEncoderAdapter (OpenH264 ×3)`).
+Selecting vp9 gets a single layer: encode fell 7.1ms → 2.0ms and Δ 630ms → 601ms, with outbound
+frame rate unchanged at 30. There is exactly one subscriber, so simulcast was buying adaptation
+nobody uses — still worth raising with Decart. **Changing the codec needs a page reload**, not a
+`C` reconnect: a mid-session reconnect with a new codec failed to publish at all (outbound 0fps,
+0 generation seconds billed).
+
+**The frame rate is Decart's, not ours.** Inbound holds at **18fps on both codecs** while we
+publish a full 30. A free camera-only run cleared our side conclusively: the render loop runs a
+flat 60fps with MediaPipe costing 13.6ms of a 16.7ms budget with both hands visible. Choppiness
+reads as latency, so this is worth pursuing with Decart alongside the inference time — but no
+code here changes it.
+
+**Ruled out:** uplink saturation (`qualityLimitationReason` was `none` throughout, and the one
+run showing 15fps outbound did not reproduce), a relayed path, and decode cost.
+
+**Δ was flat across every run** — no growth, so it is pipeline latency rather than a buffer
+filling, which would have been the more fixable of the two.
 
 **Backburner — `onConnectionQuality`.** Still the right input for a "your connection is degrading"
 UI state, and `limitingFactor` (`bandwidth` / `latency` / `loss` / `stall` / `cpu` / `none`) is
@@ -623,10 +647,12 @@ Written for a video-to-video restyle model — describe the transformation of th
 
 ## 7. Known risks / open questions
 
-- **Lucy prompt-transition behavior:** how many frames does a `setPrompt` take to fully settle? Measure; if slow, lengthen the required CLOSED hold or crossfade inside the portal.
+- ~~**Lucy prompt-transition behavior:** how many frames does a `setPrompt` take to fully settle?~~ **Answered 2026-08-16: 400–900ms, and it arrives as a step, not a ramp** — one 100ms sample apart, image content jumps to its plateau and stays. Both remedies guessed at here turned out to be needed: the portal cross-fades from the dimension colour, and the gestural hold lets a performer cover the change by holding longer. The crossfade fires on *detection* rather than a timer, since a fixed wait is wrong in both directions (§4.1).
 - **Lucy latency variance** on real networks; the Δ-buffer is the mitigation, and the SDK's `g2gMs` (§2.3.1) is how Δ gets a real number. Open: Δ may drift *during* a session, so a one-shot measurement may not be enough — but re-measuring means re-enabling the pixel marker mid-take, which we can't do during a recording. Possible answer is `onConnectionQuality` as a cheap "something changed, Δ is probably stale" signal.
 - ~~**`debugQuality` is unverified on the JS SDK.**~~ **Resolved 2026-08-16** by reading `@decartai/sdk@0.1.21` directly. Glass-to-glass measurement is present in the JS SDK, automatic, free, and does not touch visible pixels; `debugQuality` itself is an inert option that must not be built on. See §2.3.1. Two smaller risks replace it: LiveKit frame metadata is **experimental upstream**, so re-check `g2gMs` is non-null after any SDK bump; and it needs WebRTC encoded transform, which Chrome and Safari both have but which would silently degrade to RTT elsewhere.
-- **Δ is 3–6× larger than the marketed figure, and that is now the top Phase 1 risk** (§2.3). The SDK's own thresholds treat ≤500ms as good. At that scale, "just delay the display to match" stops being free, because the performer has to frame a portal against a half-second-late preview. Measure `g2gMs` in the very first session and judge V1 on camera before building the delay buffer.
+- ~~**Δ is 3–6× larger than the marketed figure**~~ **Measured and closed: Δ is ~600ms, ~85% of it Decart's inference** (§2.3.1). No longer a risk to investigate but a constraint to design around — the delay buffer (`src/delayBuffer.ts`) exists so V1-vs-V2 can be judged on camera rather than argued.
+- **Lucy returns ~18fps, not 30** (§2.3.1), on both codecs, while we publish a full 30. Our own render loop was cleared at a flat 60fps, so this is Decart's output rate. Choppiness reads as latency, so it may be costing more perceptually than the raw Δ. **Open with Decart, alongside the inference time.** Also untested: whether `lucy-restyle-2` behaves differently — note it is 1280×704, so trying it costs an aspect-ratio change (§3).
+- **A prompt becomes visible 400–900ms after it is sent, as a step change** (§4.1). The SDK gives no signal for this — `setPrompt` acks receipt, not application — so the reveal detects it in the pixels. Open: the detector's thresholds come from five switches on one machine, and want re-validating across lighting and subjects before they can be trusted to gate anything user-facing.
 - **Hands inside Lucy's output:** Lucy transforms the whole frame including hands — this is fine (inside the portal you *want* transformed hands), but check edge seams where transformed hands meet real hands at the polygon boundary; feathering should help.
 - **Cross-browser desktop support (the risk that actually matters):** Safari on macOS is the one to watch — canvas `filter` (used for the portal feather), `captureStream`, and `MediaRecorder` codec support all differ from Chrome's, and `MediaRecorder` webm output in particular is historically weak there. Test the composite and the Phase 1.5 export in Safari before demoing. Chrome on macOS is the reference implementation.
 - **Mobile browser support (P2, non-blocking):** MediaPipe tasks-vision + WebRTC both work on modern mobile browsers in principle, but this is explicitly not a launch requirement (§3.1). Expect the real obstacles to be sustained framerate under thermal throttling and iOS Safari's camera/autoplay quirks. Try it once the desktop path is done; do not let findings here reshape the desktop build.
