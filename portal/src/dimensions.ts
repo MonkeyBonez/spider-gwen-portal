@@ -24,12 +24,18 @@
  * - `style+subject` — the full comic-book spider suit, heavy ink outlines, flat
  *   cel colour, room stylised to match. The most "animated Spider-Verse" of the
  *   four, and the closest to the trend.
- * - `multiverse` — a different thing entirely: photoreal game-cinematic render,
- *   glossy suit, and a legibly high-tech environment. Naming no rendering
- *   technique did not give a neutral result, it gave a 3D one. Keep it as a
- *   *contrasting* dimension rather than a variant of the comic look.
+ * - `high-tech` (logged as `multiverse` before 2026-08-17) — a different thing
+ *   entirely: photoreal game-cinematic render, glossy suit, and a legibly
+ *   high-tech environment. Naming no rendering technique did not give a neutral
+ *   result, it gave a 3D one. Kept as a *contrasting* dimension rather than a
+ *   variant of the comic look — the portal should open onto a different medium,
+ *   not a different filter.
  * - `mask-only` — literal: the mask alone, over his real body, clothes and room.
  *   The smallest transformation of the four.
+ *
+ * Renamed `multiverse` → `high-tech` at the same time, since the rewrite drops
+ * the word "multiverse" from the prompt. Logs from before that date use the old
+ * name.
  *
  * On scene clauses, the two behaved differently: "background is high tech"
  * rendered clearly, "in a skyscraper" did not appear at all. The distinction
@@ -87,7 +93,7 @@ export const DIMENSIONS: Dimension[] = [
      * The costume clause also moves to the front, where it is in the prompt
      * that works.
      */
-    name: 'multiverse',
+    name: 'high-tech',
     color: '#2f7bff',
     prompt:
       'A superhero in a red-and-blue spider suit, high-tech neon-lit environment, cinematic 3D render, sharp detail',
