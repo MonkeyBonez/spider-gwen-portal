@@ -253,7 +253,7 @@ export class App {
     // event that starts the collapse; it is not an earlier *guess* that the
     // close is coming. The visible dimension — colour, HUD — still changes at
     // zero closure below, so nothing on screen moves ahead of the animation.
-    if (result.advance) this.requestNextDimension(t);
+    if (result.advance) this.requestDimension((this.dimensionIndex + 1) % DIMENSIONS.length, t);
 
     const gestural = this.cfg.transitionTiming === 'gestural';
     if (gestural) {
@@ -296,10 +296,11 @@ export class App {
         // the ~2.2s it takes to land, but it is free and it is measurable.
         headStartMs: this.promptRequestedAt > 0 ? Math.round(t - this.promptRequestedAt) : 0,
       });
-      // Normally already sent on `advance`, above. This is the fallback for the
-      // paths that reach a swap without one — a manual `Space` play, or `1`–`4`
-      // playing a transition to preview it.
-      this.requestNextDimension(t);
+      // Normally already sent on `advance`, above, so this no-ops. It is the
+      // fallback for paths that reach a swap without one — a manual `Space`
+      // play, or `1`–`4` previewing a transition. `dimensionIndex` has already
+      // advanced here, so the target is the dimension now being shown.
+      this.requestDimension(this.dimensionIndex, t);
     }
 
     // Our own render rate, once a second, on the same clock as the SDK's stats.
@@ -586,23 +587,26 @@ export class App {
   }
 
   /**
-   * Ask Lucy for the dimension the portal is *about* to show.
+   * Ask Lucy for a specific dimension.
    *
-   * Idempotent per target dimension: `advance` fires once per close, but the
-   * swap fallback would otherwise re-send the same prompt a fraction of a
-   * second later, and a duplicate `setPrompt` mid-restyle risks restarting it.
+   * **The index is passed in rather than derived**, because the two call sites
+   * mean different things by "next": at `advance` the counter has not moved yet
+   * so the target is `dimensionIndex + 1`, while at the swap it already has, so
+   * the target is `dimensionIndex` itself. Computing it internally sent the
+   * dimension *after* the one about to be shown, so every switch requested one
+   * too far ahead and Lucy rendered a universe the HUD never named.
    *
-   * Note this deliberately runs one step ahead of `dimensionIndex`, which only
-   * moves at zero closure. The request is in flight while the portal collapses.
+   * Idempotent per target: `advance` fires once per close and the swap is only
+   * a fallback for manual plays, so the second call normally no-ops. That
+   * matters — a duplicate `setPrompt` mid-restyle risks restarting it.
    */
-  private requestNextDimension(t: number): void {
-    const next = (this.dimensionIndex + 1) % DIMENSIONS.length;
-    if (this.promptRequestedFor === next) return;
-    this.promptRequestedFor = next;
+  private requestDimension(index: number, t: number): void {
+    if (this.promptRequestedFor === index) return;
+    this.promptRequestedFor = index;
     this.promptRequestedAt = t;
     // Not awaited: blocking the render loop on a network ack would stall the
     // collapse animation, and the ack has been seen to take 1.9s.
-    void this.lucy?.setPrompt(DIMENSIONS[next].prompt, DIMENSIONS[next].name);
+    void this.lucy?.setPrompt(DIMENSIONS[index].prompt, DIMENSIONS[index].name);
   }
 
   /** Manual play. Under `gestural` this toggles the two halves. */

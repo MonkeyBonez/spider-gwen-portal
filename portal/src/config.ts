@@ -118,6 +118,10 @@ export interface Config {
    *
    * There is exactly one subscriber (the inference server), so simulcast is
    * paying for adaptation nobody uses. Worth raising with Decart.
+   *
+   * **Measured 2026-08-16, so `vp9` is now the default:** encode cost fell from
+   * 7.1ms to 2.0ms per frame and Δ from 630ms to 601ms, with outbound frame
+   * rate unchanged at 30. Note the SDK forces vp8 on desktop Safari regardless.
    */
   lucyCodec: LucyCodec;
 
@@ -126,12 +130,15 @@ export interface Config {
    * Cover the model's restyle with the new dimension's colour, then cross-fade
    * to the live stream.
    *
-   * Why this exists: `setPrompt` takes ~2.2s to become visible (ack 1.5–1.9s
-   * plus a ~730ms pipeline, measured 2026-08-16), while a close→open cycle
-   * takes well under a second. Collapsing the portal cannot mask a change that
-   * lands four times later than the gesture that asked for it, so the portal
-   * used to reopen onto the *old* dimension and morph into the new one in full
-   * view. Opening onto a colour that resolves reads as intentional instead.
+   * Why this exists: a prompt becomes visible **400–900ms** after it is sent
+   * (measured 2026-08-16), which is the same order as a close→open cycle — so
+   * a quick cycle reopens onto the *old* dimension and cuts to the new one in
+   * full view. Opening onto a colour that resolves reads as intentional.
+   *
+   * Worth knowing what the curves showed: the change arrives as a **step, not
+   * a morph** — one 100ms sample apart, the frame difference jumps to its
+   * plateau and stays. So there is nothing gradual to hide, only a cut to
+   * cover, which is why a short fade is enough.
    */
   revealFromColor: boolean;
   /**
@@ -204,14 +211,15 @@ export const DEFAULT_CONFIG: Config = {
   syncDelayMs: 0,
 
   idleDisconnectMs: 60_000,
-  lucyCodec: 'h264',
+  lucyCodec: 'vp9',
 
-  // Hold + fade = 2.5s, matching the measured 2.2–2.6s request→visible window.
-  // Provisional: the `prompt:settle` curves in the session log are what should
-  // set these, once there are a few runs' worth.
+  // Hold + fade = 1.0s, from the `prompt:settle` curves on 2026-08-16: five
+  // switches landed between 400ms and 900ms after the request. Biased to
+  // over-cover slightly — trailing colour reads as intentional, whereas
+  // under-covering shows the old dimension and then a hard cut.
   revealFromColor: true,
-  revealHoldMs: 1600,
-  revealFadeMs: 900,
+  revealHoldMs: 600,
+  revealFadeMs: 400,
 
   showLandmarks: false,
   showPolygonOutline: true,
@@ -224,6 +232,15 @@ const STORAGE_KEY = 'portal.config.v2';
 
 /** The old `maxHoldMs` default, superseded. See the migration in `loadConfig`. */
 const LEGACY_MAX_HOLD_MS = 2000;
+
+/**
+ * The first reveal defaults, set from a bad estimate of how long a prompt takes
+ * to land (2.5s; it is nearer 0.6s). Migrated for the same reason as
+ * `maxHoldMs`: nobody chose these, and leaving them persisted would mean a
+ * second of dead colour after every switch.
+ */
+const LEGACY_REVEAL_HOLD_MS = 1600;
+const LEGACY_REVEAL_FADE_MS = 900;
 
 export function loadConfig(): Config {
   const cfg = { ...DEFAULT_CONFIG };
@@ -253,6 +270,10 @@ export function loadConfig(): Config {
   // Done here rather than by bumping the storage key, which would also discard
   // hard-won threshold tuning.
   if (cfg.maxHoldMs === LEGACY_MAX_HOLD_MS) cfg.maxHoldMs = DEFAULT_CONFIG.maxHoldMs;
+  if (cfg.revealHoldMs === LEGACY_REVEAL_HOLD_MS && cfg.revealFadeMs === LEGACY_REVEAL_FADE_MS) {
+    cfg.revealHoldMs = DEFAULT_CONFIG.revealHoldMs;
+    cfg.revealFadeMs = DEFAULT_CONFIG.revealFadeMs;
+  }
   // A bias outside [0,1] would extrapolate past the max and make `gap` nonsense.
   if (!Number.isFinite(cfg.worstSideBias)) cfg.worstSideBias = DEFAULT_CONFIG.worstSideBias;
   cfg.worstSideBias = Math.min(1, Math.max(0, cfg.worstSideBias));
