@@ -120,6 +120,35 @@ export interface Config {
    * paying for adaptation nobody uses. Worth raising with Decart.
    */
   lucyCodec: LucyCodec;
+
+  // --- switch reveal (§4.1) -------------------------------------------------
+  /**
+   * Cover the model's restyle with the new dimension's colour, then cross-fade
+   * to the live stream.
+   *
+   * Why this exists: `setPrompt` takes ~2.2s to become visible (ack 1.5–1.9s
+   * plus a ~730ms pipeline, measured 2026-08-16), while a close→open cycle
+   * takes well under a second. Collapsing the portal cannot mask a change that
+   * lands four times later than the gesture that asked for it, so the portal
+   * used to reopen onto the *old* dimension and morph into the new one in full
+   * view. Opening onto a colour that resolves reads as intentional instead.
+   */
+  revealFromColor: boolean;
+  /**
+   * How long to hold the flat colour after the prompt is sent, before the
+   * cross-fade begins. **Timed from the request, not from the portal opening**,
+   * which is the important part: holding your hands closed longer spends this
+   * budget, so a long enough hold reveals the settled stream with no fade at
+   * all — the gesture masks the change exactly as originally intended, just at
+   * a duration the performer controls.
+   */
+  revealHoldMs: number;
+  /**
+   * Cross-fade length. Generous on purpose: a slow fade also hides the *tail*
+   * of the model settling, so it buys forgiveness for `revealHoldMs` being a
+   * little short. 0 makes it a hard cut.
+   */
+  revealFadeMs: number;
   /**
    * Disconnect Lucy after this long with no hands detected. The stream bills
    * per generation-second, so an unattended session is money burning — but a
@@ -176,6 +205,13 @@ export const DEFAULT_CONFIG: Config = {
 
   idleDisconnectMs: 60_000,
   lucyCodec: 'h264',
+
+  // Hold + fade = 2.5s, matching the measured 2.2–2.6s request→visible window.
+  // Provisional: the `prompt:settle` curves in the session log are what should
+  // set these, once there are a few runs' worth.
+  revealFromColor: true,
+  revealHoldMs: 1600,
+  revealFadeMs: 900,
 
   showLandmarks: false,
   showPolygonOutline: true,

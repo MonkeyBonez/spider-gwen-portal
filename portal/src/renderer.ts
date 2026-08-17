@@ -45,6 +45,11 @@ export interface RenderInput {
    * start (PRD §2.3.1) and Phase 0's no-Lucy mode with the same code path.
    */
   source?: HTMLVideoElement | null;
+  /**
+   * How much of `source` to show, 0–1. Below 1 the dimension colour shows
+   * through underneath — this is the reveal cross-fade (PRD §4.1).
+   */
+  sourceAlpha?: number;
 }
 
 export class Renderer {
@@ -90,22 +95,28 @@ export class Renderer {
     if (input.portal && input.opacity > 0.01) {
       const pts = polygonOrder(input.portal).map((p) => this.toScreen(p, cfg));
 
+      // The dimension colour is the floor the portal contents sit on. It shows
+      // alone during Lucy's cold start, and it is what the reveal cross-fades
+      // up from after a switch — one mechanism, not two.
+      const alpha = input.source ? Math.min(1, Math.max(0, input.sourceAlpha ?? 1)) : 0;
       this.layerCtx.clearRect(0, 0, w, h);
-      if (input.source) {
+      if (alpha < 1) {
+        this.layerCtx.fillStyle = input.fill;
+        this.layerCtx.fillRect(0, 0, w, h);
+      }
+      if (input.source && alpha > 0) {
         // Lucy's frame has to carry the *same* mirror transform as the raw feed
         // in step 1. The mask is built in screen space, so drawing the portal
         // contents unmirrored would put a correctly-placed window over a
         // laterally-flipped world — the seam at the polygon edge would jump.
         this.layerCtx.save();
+        this.layerCtx.globalAlpha = alpha;
         if (cfg.mirror) {
           this.layerCtx.translate(w, 0);
           this.layerCtx.scale(-1, 1);
         }
         drawCover(this.layerCtx, input.source, w, h);
         this.layerCtx.restore();
-      } else {
-        this.layerCtx.fillStyle = input.fill;
-        this.layerCtx.fillRect(0, 0, w, h);
       }
 
       this.maskCtx.clearRect(0, 0, w, h);

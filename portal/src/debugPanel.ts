@@ -84,6 +84,22 @@ const SLIDERS: SliderSpec[] = [
     hint: '0 = live composite (seam mismatch) · match Δ g2g to align the portal with its contents',
   },
   {
+    key: 'revealHoldMs',
+    label: 'Reveal hold',
+    min: 0,
+    max: 4000,
+    step: 100,
+    hint: 'colour-only time after the prompt is sent · counted from the request, so holding the close eats into it',
+  },
+  {
+    key: 'revealFadeMs',
+    label: 'Reveal fade',
+    min: 0,
+    max: 3000,
+    step: 100,
+    hint: 'cross-fade from colour to the live stream · 0 = hard cut',
+  },
+  {
     key: 'idleDisconnectMs',
     label: 'Idle disconnect',
     min: 0,
@@ -98,6 +114,7 @@ const TOGGLES: { key: BoolKeys; label: string }[] = [
   { key: 'showPolygonOutline', label: 'Polygon outline' },
   { key: 'mirror', label: 'Mirror view' },
   { key: 'swapHandedness', label: 'Swap L/R hands' },
+  { key: 'revealFromColor', label: 'Reveal from colour' },
 ];
 
 export interface Readouts {

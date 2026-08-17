@@ -387,6 +387,7 @@ export class App {
         // Falls back to the flat colour whenever Lucy has nothing decoded —
         // cold start, a dropped connection, or camera-only mode. Same path.
         source: this.lucy?.frame ?? null,
+        sourceAlpha: this.revealAlpha(t),
       },
       this.cfg,
     );
@@ -487,6 +488,12 @@ export class App {
       // for. A capacity below the request means the ring ran out of frames at
       // this frame rate, and the composite is under-delayed rather than
       // aligned — silently, unless it is shown.
+      // Where the reveal is: 0% = flat colour hiding the old dimension, 100% =
+      // fully live. If it reaches 100% before the portal reopens, the change
+      // was masked completely.
+      reveal: this.cfg.revealFromColor
+        ? `${Math.round(this.revealAlpha(performance.now()) * 100)}%`
+        : 'off (cut straight to stream)',
       'sync Δ': this.cfg.syncDelayMs > 0
         ? `${this.cfg.syncDelayMs}ms applied · ${Math.round(this.delay.capacityMs)}ms held (${this.delay.size}f)`
         : 'off (live composite)',
@@ -551,6 +558,28 @@ export class App {
       // Play it immediately so the variant can be judged the moment it is picked.
       this.playTransition();
     }
+  }
+
+  /**
+   * How much of Lucy's stream to show, 0–1 — the switch reveal (§4.1).
+   *
+   * The clock starts when the prompt is *requested*, not when the portal
+   * reopens, which is what makes a long hold behave correctly: keep your hands
+   * together past `revealHoldMs + revealFadeMs` and the portal opens straight
+   * onto the settled stream, no fade, exactly the masking the collapse was
+   * always meant to provide.
+   *
+   * Before the first switch `promptRequestedAt` is 0, so this returns 1 and the
+   * opening dimension appears as soon as it decodes rather than being held back
+   * behind a reveal nobody asked for.
+   */
+  private revealAlpha(t: number): number {
+    if (!this.cfg.revealFromColor || this.promptRequestedAt <= 0) return 1;
+    const since = t - this.promptRequestedAt;
+    const hold = this.cfg.revealHoldMs;
+    if (since <= hold) return 0;
+    if (this.cfg.revealFadeMs <= 0) return 1;
+    return Math.min(1, (since - hold) / this.cfg.revealFadeMs);
   }
 
   /**
