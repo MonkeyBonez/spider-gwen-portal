@@ -176,11 +176,34 @@ export interface Config {
    */
   recordStreams: boolean;
 
+  /**
+   * Migration marker. Bump it and add a case in `loadConfig` when a *default*
+   * changes in a way that a stored setting would silently override.
+   *
+   * This exists because that has now happened twice — a persisted `maxHoldMs`
+   * reopened the portal on a timer, and a persisted `lucyCodec` kept two runs
+   * on h264 after vp9 was measured better, costing ~120ms each time without
+   * anything on screen saying so. Storing tuned values is the point of the
+   * config; the hazard is that it also stores values nobody chose.
+   */
+  schemaVersion: number;
+
   // --- debug ----------------------------------------------------------------
   showLandmarks: boolean;
   showPolygonOutline: boolean;
   showPanel: boolean;
 }
+
+/**
+ * Current config schema. See `Config.schemaVersion`.
+ *
+ * 2 → 3: move to the vp9 publish codec. Measured better on 2026-08-16 (encode
+ * 7.1ms → 2.0ms, Δ 630ms → 601ms at the same frame rate), but two later runs
+ * still went out on h264 because the stored value won. Sne asked for the
+ * measured default to be applied, so this moves it once. Setting h264 by hand
+ * afterwards sticks — the migration is keyed on the version, not the value.
+ */
+const SCHEMA_VERSION = 3;
 
 export const DEFAULT_CONFIG: Config = {
   captureWidth: 1280,
@@ -234,6 +257,8 @@ export const DEFAULT_CONFIG: Config = {
   revealHoldMs: 600,
   revealFadeMs: 400,
 
+  schemaVersion: SCHEMA_VERSION,
+
   showLandmarks: false,
   showPolygonOutline: true,
   showPanel: true,
@@ -242,6 +267,7 @@ export const DEFAULT_CONFIG: Config = {
 // Bumped from v1: `all` contact mode is on a different scale, so a persisted v1
 // close/open threshold would be badly wrong rather than merely stale.
 const STORAGE_KEY = 'portal.config.v2';
+
 
 /** The old `maxHoldMs` default, superseded. See the migration in `loadConfig`. */
 const LEGACY_MAX_HOLD_MS = 2000;
@@ -257,9 +283,17 @@ const LEGACY_REVEAL_FADE_MS = 900;
 
 export function loadConfig(): Config {
   const cfg = { ...DEFAULT_CONFIG };
+  // Read the *stored* version before merging. Taking it from `cfg` afterwards
+  // would read the default that was just merged in, so an old config would
+  // always look current and no migration would ever run — which a test caught.
+  let storedVersion = 0;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) Object.assign(cfg, JSON.parse(raw) as Partial<Config>);
+    if (raw) {
+      const stored = JSON.parse(raw) as Partial<Config>;
+      storedVersion = typeof stored.schemaVersion === 'number' ? stored.schemaVersion : 2;
+      Object.assign(cfg, stored);
+    }
   } catch {
     /* corrupt or unavailable storage — fall back to defaults */
   }
@@ -283,6 +317,11 @@ export function loadConfig(): Config {
   // Done here rather than by bumping the storage key, which would also discard
   // hard-won threshold tuning.
   if (cfg.maxHoldMs === LEGACY_MAX_HOLD_MS) cfg.maxHoldMs = DEFAULT_CONFIG.maxHoldMs;
+  // Version-keyed migrations: each runs once, then the marker moves past it.
+  // `storedVersion` is 0 when there was nothing stored, in which case the
+  // defaults are already current and the migration is a no-op anyway.
+  if (storedVersion > 0 && storedVersion < 3) cfg.lucyCodec = 'vp9';
+  cfg.schemaVersion = SCHEMA_VERSION;
   if (cfg.revealHoldMs === LEGACY_REVEAL_HOLD_MS && cfg.revealFadeMs === LEGACY_REVEAL_FADE_MS) {
     cfg.revealHoldMs = DEFAULT_CONFIG.revealHoldMs;
     cfg.revealFadeMs = DEFAULT_CONFIG.revealFadeMs;

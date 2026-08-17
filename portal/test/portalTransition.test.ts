@@ -353,3 +353,31 @@ describe('maxHoldMs migration', () => {
     localStorage.clear();
   });
 });
+
+describe('schema-version migration', () => {
+  // Node has no localStorage; the config module reads it at call time.
+  function withStored(stored: Record<string, unknown>): Config {
+    const map = new Map<string, string>([['portal.config.v2', JSON.stringify(stored)]]);
+    (globalThis as { localStorage?: Storage }).localStorage = {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => void map.set(k, v),
+      removeItem: (k: string) => void map.delete(k),
+      clear: () => map.clear(),
+      key: () => null,
+      length: 0,
+    } as Storage;
+    return loadConfig();
+  }
+
+  it('moves a pre-v3 config onto the measured-better vp9 codec', () => {
+    // The failure this prevents: two paid runs went out on h264 after vp9 was
+    // measured 120ms faster, because the stored value silently won.
+    expect(withStored({ lucyCodec: 'h264' }).lucyCodec).toBe('vp9');
+  });
+
+  it('leaves a deliberate h264 choice alone once migrated', () => {
+    // Keyed on the version, not the value — so choosing h264 afterwards sticks.
+    const cfg = withStored({ lucyCodec: 'h264', schemaVersion: 3 });
+    expect(cfg.lucyCodec).toBe('h264');
+  });
+});
