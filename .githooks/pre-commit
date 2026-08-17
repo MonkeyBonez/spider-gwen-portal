@@ -1,0 +1,42 @@
+#!/bin/sh
+# Blocks a Decart API key (or any env file) from being committed.
+#
+# .gitignore already keeps `.env.local` out, but `git add -f`, a rename, or a
+# key pasted into a source file all route around it. This is the backstop.
+#
+# Enable it with:  git config core.hooksPath .githooks
+# Bypass it once:  git commit --no-verify   (only when you are certain)
+
+fail() {
+	echo "pre-commit: refusing to commit — $1" >&2
+	echo "            Remove it, or re-run with --no-verify if you are certain." >&2
+	exit 1
+}
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+# 1. Env files. `.env.example` is the tracked template and is allowed through,
+#    but it is still scanned for a key value in step 2.
+for f in $staged; do
+	case "${f##*/}" in
+	.env.example) ;;
+	.env | .env.*) fail "$f is an env file and env files hold secrets" ;;
+	esac
+done
+
+# 2. Key-shaped strings in the staged content of any file. Decart keys are
+#    long opaque tokens, so this looks for an assignment to a key/secret/token
+#    name with a substantial literal on the right — which is what a pasted key
+#    looks like, whether it lands in .env.example, a TS file, or a README.
+if git diff --cached -U0 -- $staged |
+	grep -nEi '^\+.*(api[_-]?key|secret|access[_-]?token|bearer)[^=:]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9_.-]{20,}' |
+	grep -vEi '(your-api-key|example|placeholder|xxx|\.\.\.)' >/dev/null; then
+	echo "pre-commit: a staged line looks like a real API key:" >&2
+	git diff --cached -U0 -- $staged |
+		grep -nEi '^\+.*(api[_-]?key|secret|access[_-]?token|bearer)[^=:]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9_.-]{20,}' |
+		grep -vEi '(your-api-key|example|placeholder|xxx|\.\.\.)' >&2
+	fail "the line above"
+fi
+
+exit 0

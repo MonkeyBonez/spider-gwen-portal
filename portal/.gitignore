@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Secrets — the Decart API key lives in .env.local, which never gets committed.
+# The root .gitignore covers this too; it is repeated here so anyone working
+# inside portal/ can see the rule without leaving the directory. `.env.example`
+# is the template and is deliberately tracked, so it must stay key-free.
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

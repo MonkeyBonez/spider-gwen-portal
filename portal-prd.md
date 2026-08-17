@@ -1,6 +1,6 @@
 # Portal — Real-Time Spider-Verse Dimension Portal (PRD + Build Context)
 
-**Status:** **Phase 0 complete** — exit criteria tested and signed off by Sne, 2026-08-16 (`portal/`). Phase 1 is unblocked. This document is the full context for the project. Read it entirely before writing code.
+**Status:** **Phase 0 complete** — exit criteria tested and signed off by Sne, 2026-08-16 (`portal/`). **Phase 1 in progress:** Decart API key obtained, and the SDK surface verified directly against `@decartai/sdk@0.1.21` (§2.3.1, §3) — which corrected this document's latency section and raised the expected Δ from ~100ms to 300–600ms (§2.3, §7). This document is the full context for the project. Read it entirely before writing code.
 **Owner:** Sne
 **Last updated:** 2026-08-16
 
@@ -149,26 +149,86 @@ Provisional default 0.7.
 
 ### 2.3 Sync / latency alignment
 
-- Lucy realtime is marketed at sub-40ms inference latency at 30fps over WebRTC; real end-to-end latency = inference + network RTT, and will vary. Treat total delay as an unknown to measure, not a constant.
+- **Δ is much larger than the marketing number.** Lucy realtime is marketed at sub-40ms inference at 30fps, but the SDK's own quality bands (verified in the shipped code, §2.3.1) rate glass-to-glass **≤500ms as "good", ≤900ms "fair", ≤1500ms "poor"**, with a source comment citing a server-side pipeline median of ~285ms. So plan for Δ in the **300–600ms** range, not ~100ms, and treat the marketed figure as inference alone on Decart's own hardware. Measure before designing around any number.
 - The portal mask is computed locally (~1 frame). The Lucy stream arrives delayed. If we composite naively, the transformed self lags the mask.
 - **Approach, in order:**
   1. **V1: composite live, no compensation.** May look fine at small delays. Ship this first and evaluate visually.
   2. **V2: delay the raw feed + mask by an estimated Δ** to align with Lucy's stream. Implement a ring buffer of (frame, landmarks, timestamp) and render from `now − Δ`. Δ is a user-tunable slider in the debug panel (0–500ms). Investigate whether the Decart SDK exposes latency/stats (WebRTC `getStats()` RTT is a fallback estimator).
      - **Where the estimate comes from: the SDK, not us.** See §2.3.1.
-  3. Note: delaying the *entire displayed output* by Δ is acceptable — the user is performing to camera, a uniform ~100ms display delay is not noticeable in the recording.
+  3. ~~Note: delaying the *entire displayed output* by Δ is acceptable — the user is performing to camera, a uniform ~100ms display delay is not noticeable in the recording.~~ **This assumption does not survive a Δ of 300–600ms.** It is true that the *recording* is unharmed — every frame is internally consistent, and nobody watching it can tell when it was captured. What breaks is the **monitor**: the performer sees their own hands up to half a second late, which is well past the point where hand–eye feedback stops working. Framing a portal to a delayed preview is like singing with headphone delay.
+  4. **So the two options are both worse than this section assumed, and the choice is now a real one:**
+     - **V1 (composite live)** keeps the monitor honest, and pays at the *seam*: the portal polygon tracks the live fingertips while the pixels inside it are Δ old, so transformed hands inside the frame sit half a second behind the real hands bordering it. How bad that looks is an empirical question — feathering helps, and "the other universe runs slightly behind ours" is not an unreasonable thing for a portal to do.
+     - **V2 (delay everything by Δ)** makes the seam perfect and the monitor laggy.
+     - A possible third path if V1's seam is the problem: keep the *preview* live and un-delayed for the performer, and apply the Δ alignment only to the **recorded** canvas, which nobody has to perform against. Costs a second composite; noted, not designed.
+     - **Do not pick from the armchair.** Measure `g2gMs` in the first session (it is free — see §2.3.1), then look at V1 on camera. This is the first thing Phase 1 should answer.
 
 #### 2.3.1 Measuring Δ — use the SDK's glass-to-glass number
 
-**Verify the exact JS API surface at build time** (option name, where readings are exposed). The clearest write-up found so far was in Decart's *Android* SDK README; the JS SDK README references the same feature but has not been read directly. Everything below is on that footing — the technique is confirmed to exist, the JS call signature is not.
+**Verified against the shipped JS SDK, `@decartai/sdk@0.1.21`, on 2026-08-16** — types in
+`dist/**/*.d.ts`, implementation in `dist/**/*.js`, plus its README. This section previously
+described the *Android* SDK's approach second-hand and got three things wrong; those are called
+out below so the corrections don't get quietly reverted by someone reading the old Android docs.
 
-- **`debugQuality` → `g2gMs` is the number we want.** With the flag enabled, the SDK stamps a pixel marker into each outgoing frame and reads it back off the rendered output, reporting startup latency (`ttffMs`), steady-state glass-to-glass latency (`g2gMs`), and an end-to-end drop ratio (`g2gDropRatio`). `g2gMs` is camera-to-display **including inference**, which is exactly Δ.
-- **Why this matters more than it sounds:** WebRTC `getStats()` RTT measures the network leg only, and in real-time video the *dominant* cost is model inference. A session can therefore report a healthy RTT while feeling obviously laggy. RTT is a bad proxy for Δ; `g2gMs` is not a proxy at all.
-- **Note what the technique is:** a visual-watermark loopback — the objection to which was that a marker might not survive the model's transformation. Decart shipping it implies they place the marker where Lucy passes it through. Worth confirming by eye that the marker is not visible in normal output.
-- **Do not leave it on.** A stamped pixel marker in every outgoing frame does not belong in the user's recording. Enable it for a short measurement window (or a debug-panel "measure latency" action), read `g2gMs`, disable it. Whether it must be set at connect time — which would mean a reconnect to toggle it — is part of what to verify.
-- **`requestVideoFrameCallback` cannot replace it.** rvfc does expose `captureTime` and `receiveTime` for WebRTC sources, but for Lucy's stream "capture" means *when Decart's server emitted the frame*, not when our camera saw the original. So rvfc measures the downlink leg only. Useful for splitting Δ into network-down vs. everything-else when debugging; not a substitute for `g2gMs`. These fields are also optional per spec and Chromium-implemented — check Safari before depending on them.
-- **The manual slider stays regardless.** A measured Δ is a starting value, not a lock. Measured-once vs. re-measured periodically vs. a fixed value picked by feel vs. no compensation at all (V1) are all live options to A/B.
+- **`g2gMs` exists in the JS SDK and is exactly Δ** — steady-state camera→display latency
+  *including inference*. Alongside it: `ttffMs` (startup, connect → first rendered frame),
+  `medianMs` / `p90Ms`, `sampleCount`, and `dropRatio`.
+- **Correction 1 — it is not a pixel watermark.** The mechanism is **LiveKit frame metadata**: a
+  capture timestamp rides along as a packet trailer, the server propagates it through inference,
+  and the SDK matches it against playout. The README states plainly that it *does not alter
+  visible pixels*. The old worry — a marker showing up in the user's recording, and a marker
+  having to survive Lucy's transformation — does not apply. Nothing to hide, nothing to disable.
+- **Correction 2 — `debugQuality` is not the switch. Do not use it.** The option is accepted by
+  the connect-options schema (`realtime/client.js`) and then **read nowhere else in the package**.
+  It is inert. Building a "measure latency" toggle around it would have produced a control that
+  silently did nothing.
+- **Correction 3 — measurement is on by default, and free.** It is gated on browser capability,
+  not on any flag: `isFrameMetadataRuntimeSupported()` requires WebRTC encoded transform —
+  `RTCRtpScriptTransform` (the non-Chromium path) or `RTCRtpSender/Receiver.prototype.createEncodedStreams`.
+  **Chrome on macOS has the latter, Safari has the former, so both §3.1 P0 and P1 targets are
+  covered.** Unsupported runtimes just report `null` and fall back to RTT; nothing breaks.
+- **Read it from the `stats` event, not from `onConnectionQuality`.** This is the trap in the API:
+  `onConnectionQuality` and the `connectionQuality` event are **debounced — they only re-fire when
+  the verdict changes**, so a HUD driven off them shows a stale number indefinitely while the
+  connection holds steady. The continuous feed is the `stats` event, ~1/s:
+  ```ts
+  realtimeClient.on('stats', ({ glassToGlass }) => {
+    setDelta(glassToGlass?.medianMs);        // Δ
+    setTtff(glassToGlass?.ttffMs);           // one-shot startup figure
+  });
+  ```
+  `realtimeClient.getConnectionQuality()?.metrics.g2gMs` is the pull-based equivalent if a poll
+  suits the call site better.
+- **`g2gDropRatio` is not usable yet.** Documented, typed, and hardcoded to stay `null` until
+  Decart propagates frame *identity* (not just timestamps) through the server pipeline. Latency
+  works; drop ratio does not. Do not put it on the panel.
+- **What "good" means, per the SDK's own thresholds:** g2g good ≤500ms / fair ≤900ms / poor
+  ≤1500ms; TTFF good ≤4s / fair ≤6s / poor ≤10s. Those bands are the basis for the revised Δ
+  estimate in §2.3 — a **4–5 second cold start is considered normal**, which the Start-button UX
+  has to cover with something to look at.
+- **Frame metadata is flagged experimental in LiveKit.** It could regress on an SDK bump. Δ
+  degrading to "RTT plus a guess" is survivable, but pin the SDK version and re-check `g2gMs` is
+  non-null after any upgrade.
+- **`requestVideoFrameCallback` cannot replace it.** rvfc does expose `captureTime` and
+  `receiveTime` for WebRTC sources, but for Lucy's stream "capture" means *when Decart's server
+  emitted the frame*, not when our camera saw the original. So rvfc measures the downlink leg
+  only. Useful for splitting Δ into network-down vs. everything-else when debugging; not a
+  substitute for `g2gMs`. These fields are also optional per spec and Chromium-implemented.
+- **The manual slider stays regardless.** A measured Δ is a starting value, not a lock.
+  Measured-once vs. re-measured periodically vs. a fixed value picked by feel vs. no compensation
+  at all (V1) are all live options to A/B.
 
-**Backburner — `onConnectionQuality`.** While connected, the SDK reports a smoothed quality verdict derived from WebRTC stats (`rttMs`, `fps`, `packetLoss`, `upstreamJitterMs`) plus a `limitingFactor` of bandwidth / latency / loss / stall / cpu. That is the right input for a "your connection is degrading" UI state, and the `limitingFactor` is genuinely useful for telling a user *why*. It is separate from Δ and not needed to ship — note it, do not build it yet.
+**Preflight, before a session exists.** `client.realtime.checkConnectivity()` is a **free**
+network-only reachability check (a throwaway peer connection against public STUN; reports
+`transport: "udp" | "relay" | "failed"` and `rttMs`) — cheap enough to run behind the Start
+button and refuse gracefully on `"critical"`. Its `{ deep: true, model }` form opens a real
+short session with a synthetic source to measure actual `g2gMs`/`ttffMs` before committing —
+**that one costs GPU seconds**, so it is a debug-panel action, never something that runs on load.
+
+**Backburner — `onConnectionQuality`.** Still the right input for a "your connection is degrading"
+UI state, and `limitingFactor` (`bandwidth` / `latency` / `loss` / `stall` / `cpu` / `none`) is
+genuinely useful for telling a user *why*. Its debouncing, which makes it wrong for a Δ readout,
+is exactly right here. Note `availableUpstreamKbps` is Chromium-only, so the bandwidth dimension
+goes quiet on Safari. Separate from Δ and not needed to ship — note it, do not build it yet.
 
 **Cut:** deriving Δ ourselves by cross-correlating motion energy between the outgoing and returned streams. It was designed to solve a problem the SDK already solves, and its only remaining value would be validating `g2gMs`. Not worth the build.
 
@@ -178,8 +238,13 @@ Provisional default 0.7.
 
 - **Frontend:** Single-page web app. React + Vite (or plain TS if simpler). No backend required for POC/MVP — everything runs client-side except Lucy's cloud inference.
 - **Hand tracking:** `@mediapipe/tasks-vision` npm package → `HandLandmarker`, `runningMode: "VIDEO"`, `numHands: 2`, GPU delegate (WASM/WebGL). Model asset: the official `hand_landmarker.task` float16 bundle from Google's storage CDN. (Do NOT use the legacy TensorFlow.js handpose or legacy MediaPipe Hands solution — use the current Tasks API.)
-- **AI video:** `@decartai/sdk` → `client.realtime.connect(stream, { model: models.realtime("lucy-2.5"), ... })`. WebRTC-based; returns a transformed MediaStream via `onRemoteStream`. Prompt changes mid-session via `realtimeClient.setPrompt(...)` (await server ack). Output is 720p; request camera at the model's specified width/height/fps.
-  - Model choice: default **lucy-2.5** (general realtime editing, best prompt-following). **lucy-restyle-2** is a fallback/alternative to A/B for full-scene restyling. Check current model IDs in Decart docs at build time.
+- **AI video:** `@decartai/sdk` (pinned at **0.1.21**, surface verified 2026-08-16) → `client.realtime.connect(stream, { model: models.realtime("lucy-2.5"), onRemoteStream, ... })`. WebRTC over LiveKit; returns a transformed MediaStream via `onRemoteStream`. Prompt changes mid-session via `await realtimeClient.setPrompt(text, { enhance })` — it returns a Promise, so the ack is awaitable.
+  - Model choice: default **lucy-2.5**, which the SDK defines as **1280×720 @ 30fps** — an exact match for our canonical canvas (§7), so no letterboxing. **`lucy-restyle-2` is 1280×704**, so switching to it as an A/B is *not* free: it changes the aspect and breaks pixel alignment. Budget for that if it gets tried.
+  - `initialState.prompt` sets dimension #1 **at connect time**, so the first frames never arrive in the wrong universe. Use it rather than firing `setPrompt` immediately after connecting.
+  - **Connect options worth knowing:** `resolution: "720p" | "1080p"`, `preferredVideoCodec` (the SDK already forces vp8 on desktop Safari by itself), and `mirror` — which **defaults to `false`, and must stay that way**: we mirror in the canvas, so letting the SDK mirror too would flip the portal contents against the mask.
+  - **Cost metering comes free:** the `generationTick` event carries `{ seconds }` and `generationEnded` carries `{ seconds, reason }`. That is the §5 "generation seconds used" readout and the Phase 2 cost model, with no polling. (Earlier drafts called this `generationTicks` — wrong name.)
+  - **There may be a queue.** `onQueuePosition` / the `queuePosition` event report `{ position, queueSize }`, and `ConnectionState` includes `"connecting" | "connected" | "generating" | "disconnected" | "reconnecting"`. The Start flow needs to show queue position and a ~4–5s cold start (§2.3.1), not a dead button.
+  - **Key handling, as shipped by the SDK:** `createDecartClient({ apiKey })` for local dev; `createDecartClient({ proxy })` for a keyless client that talks to a backend of ours; and `client.tokens.create(...)` mints **ephemeral keys** (`expiresIn` 1–3600s, plus `allowedModels`, `allowedOrigins`, and a `maxSessionDuration` constraint). The ephemeral-token path is the right answer for Phase 2 if we ever host this — it needs a backend to hold the real key, which is exactly the boundary §Phase 2 already draws.
 - **Compositing:** `<canvas>` (2D context is likely sufficient; WebGL if perf demands). Per displayed frame: draw raw video → set clip path to portal polygon (even-odd) → draw Lucy video inside clip. Feathered edge via shadow/blur trick or offscreen mask canvas.
 - **Recording (MVP 1.5):** `canvas.captureStream(30)` → `MediaRecorder` → webm (mp4 via muxer lib if needed for social apps). Include mic audio track optionally.
 
@@ -328,7 +393,8 @@ Settled so far: **`iris`**, **`gestural`**. Still open:
 
 ### Phase 1 — MVP (Lucy integration)
 Goal: replace solid color with live Lucy stream.
-- Connect one persistent Lucy realtime session when the user hits "Start" (single stream — do NOT run parallel streams; `setPrompt` replaces the need for pre-warmed backup streams).
+- **First task, before any UI work: connect once and read `g2gMs`.** Everything downstream — whether the delay buffer gets built at all, and which of the §2.3 options we take — turns on that number, and it takes one session to get. Log it, write it down here.
+- Connect one persistent Lucy realtime session when the user hits "Start" (single stream — do NOT run parallel streams; `setPrompt` replaces the need for pre-warmed backup streams). Cover the ~4–5s cold start and any queue position with real UI (§3), not a frozen button.
 - Prompt library of ~6 Spider-Verse dimension prompts (see §6); cycle via `setPrompt` on CLOSED.
 - Composite per §2. V1 sync (no compensation), then V2 delay buffer if needed.
 - Disconnect Lucy on Stop/idle timeout (billing is per generation-second — never leave a stream running).
@@ -472,7 +538,7 @@ say so before they record rather than after.
 - Sliders: EMA α, worst-side bias (§2.2.1), close threshold, release threshold, open threshold, debounce frames, cooldown ms, sync delay Δ, transition collapse/hold/reopen/overshoot/max-hold (§4.1).
 - Readouts: FPS, state machine state, normalized gap/area, `gap` under all three contact modes at once, the two side separations behind the current `gap` (`sides a/b` — a lopsided pair is the case the worst-side bias exists to reject), Lucy connection state, generation seconds used.
 - Calibration (§4.3): a "run tutorial" button, the measured position-1/position-2 `gap` values, and the thresholds fitted from them. Fitted values must be visibly distinguishable from defaults, and overridable by the sliders above.
-- Latency (§2.3.1): a "measure latency" action that enables `debugQuality` briefly and reads back `ttffMs` / `g2gMs` / `g2gDropRatio`, with the Δ actually in use shown alongside. Later, if built: the live `onConnectionQuality` verdict and its `limitingFactor`.
+- Latency (§2.3.1): a **live** Δ readout fed by the `stats` event — `glassToGlass.medianMs` and `.p90Ms`, with `ttffMs` shown once at connect — alongside the Δ actually in use by the delay buffer, so a drift between measured and applied is visible at a glance. No toggle is needed: measurement is always on and costs nothing. Omit `g2gDropRatio`, which the SDK always reports as `null` today. Later, if built: the debounced `onConnectionQuality` verdict and its `limitingFactor`, and a "deep preflight" button (`checkConnectivity({ deep: true, model })`) — clearly marked, since that one spends GPU seconds.
 
 ## 6. Initial prompt library (iterate later)
 
@@ -490,7 +556,8 @@ Written for a video-to-video restyle model — describe the transformation of th
 
 - **Lucy prompt-transition behavior:** how many frames does a `setPrompt` take to fully settle? Measure; if slow, lengthen the required CLOSED hold or crossfade inside the portal.
 - **Lucy latency variance** on real networks; the Δ-buffer is the mitigation, and the SDK's `g2gMs` (§2.3.1) is how Δ gets a real number. Open: Δ may drift *during* a session, so a one-shot measurement may not be enough — but re-measuring means re-enabling the pixel marker mid-take, which we can't do during a recording. Possible answer is `onConnectionQuality` as a cheap "something changed, Δ is probably stale" signal.
-- **`debugQuality` is unverified on the JS SDK.** The feature is documented clearly for Android; the JS API surface has not been read directly (§2.3.1). If it turns out to be Android-only, Δ goes back to being a tuned slider — which is survivable, since V1 ships with no compensation at all. Check this early in Phase 1, before designing any UI around a measured number.
+- ~~**`debugQuality` is unverified on the JS SDK.**~~ **Resolved 2026-08-16** by reading `@decartai/sdk@0.1.21` directly. Glass-to-glass measurement is present in the JS SDK, automatic, free, and does not touch visible pixels; `debugQuality` itself is an inert option that must not be built on. See §2.3.1. Two smaller risks replace it: LiveKit frame metadata is **experimental upstream**, so re-check `g2gMs` is non-null after any SDK bump; and it needs WebRTC encoded transform, which Chrome and Safari both have but which would silently degrade to RTT elsewhere.
+- **Δ is 3–6× larger than the marketed figure, and that is now the top Phase 1 risk** (§2.3). The SDK's own thresholds treat ≤500ms as good. At that scale, "just delay the display to match" stops being free, because the performer has to frame a portal against a half-second-late preview. Measure `g2gMs` in the very first session and judge V1 on camera before building the delay buffer.
 - **Hands inside Lucy's output:** Lucy transforms the whole frame including hands — this is fine (inside the portal you *want* transformed hands), but check edge seams where transformed hands meet real hands at the polygon boundary; feathering should help.
 - **Cross-browser desktop support (the risk that actually matters):** Safari on macOS is the one to watch — canvas `filter` (used for the portal feather), `captureStream`, and `MediaRecorder` codec support all differ from Chrome's, and `MediaRecorder` webm output in particular is historically weak there. Test the composite and the Phase 1.5 export in Safari before demoing. Chrome on macOS is the reference implementation.
 - **Mobile browser support (P2, non-blocking):** MediaPipe tasks-vision + WebRTC both work on modern mobile browsers in principle, but this is explicitly not a launch requirement (§3.1). Expect the real obstacles to be sustained framerate under thermal throttling and iOS Safari's camera/autoplay quirks. Try it once the desktop path is done; do not let findings here reshape the desktop build.
@@ -501,7 +568,7 @@ Written for a video-to-video restyle model — describe the transformation of th
 
 - MediaPipe Hand Landmarker (Web/JS): https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker/web_js
 - Decart platform & SDK docs: https://docs.platform.decart.ai/models/realtime/lucy-2.5 and https://platform.decart.ai/
-- Decart JS SDK: `@decartai/sdk` on npm — read its README for `debugQuality` / `g2gMs` and `onConnectionQuality` (§2.3.1); the Android SDK README is the fuller write-up if the JS one is thin.
+- Decart JS SDK: `@decartai/sdk` on npm, installed and pinned at **0.1.21**. The authoritative source is the **installed package itself**, not the Android docs — `node_modules/@decartai/sdk/dist/**/*.d.ts` for the surface, `README.md` for usage, and `dist/realtime/config-realtime.js` for the quality thresholds quoted in §2.3.1. Reading the Android README instead is what put three errors into this document.
 - `requestVideoFrameCallback` metadata (`captureTime`, `receiveTime`): W3C spec — note these are optional fields, Chromium-implemented.
 
 ---
@@ -511,5 +578,5 @@ Written for a video-to-video restyle model — describe the transformation of th
 - Build phase by phase. Phase 0's exit criteria passed on 2026-08-16, so **Phase 1 is unblocked**; the same rule now applies to Phase 1's own criteria before Phase 1.5.
 - Desktop first (§3.1). Build and measure against Chrome on macOS. Never trade desktop quality for mobile compatibility, and do not add mobile-specific code paths unasked.
 - Keep the gesture trigger logic behind an interface so alternative trigger strategies can be swapped in.
-- Everything client-side; no secrets committed; API key via env/local input only.
+- Everything client-side; no secrets committed; API key via env/local input only. Concretely: the key lives in `portal/.env.local` (gitignored) for local dev and in localStorage for real use; `portal/.env.example` is the tracked template and must stay key-free. A `.githooks/pre-commit` hook blocks env files and key-shaped strings from being staged — enable it in a fresh clone with `git config core.hooksPath .githooks`. Note that Vite **inlines** `VITE_`-prefixed variables into the bundle, so a deployed build must never carry one.
 - Prefer simple 2D canvas first; optimize only if FPS < 24.
