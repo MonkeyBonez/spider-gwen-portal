@@ -86,6 +86,8 @@ export class App {
   private detectMsPeak = 0;
   /** Last time hands were seen, for the idle-disconnect cost guard. */
   private lastHandsAt = 0;
+  /** Throttle for the HUD chip — it carries a live number now. */
+  private nextChipAt = 0;
   /** Dimension index already requested from Lucy, to avoid a duplicate send. */
   private promptRequestedFor = -1;
   /** When that request went out — the head start the swap gets, in the log. */
@@ -348,6 +350,18 @@ export class App {
       });
       this.detectMsPeak = 0;
       this.nextPerfLogAt = t + 1000;
+    }
+
+    // Δ on the HUD chip, not just in the debug panel. It is the number that has
+    // driven every decision in this phase, and it was sitting behind a keypress
+    // — to the point of being counted by hand off screen recordings instead.
+    // Frames alongside ms because that is how it gets checked against a 60fps
+    // capture.
+    if (this.lucy && t >= this.nextChipAt) {
+      this.nextChipAt = t + 500;
+      const d = this.lucy.stats.g2gMs;
+      const delta = d != null ? ` · ${Math.round(d)}ms (${Math.round((d / 1000) * 60)}f)` : ' · measuring…';
+      this.setLucyChip(`${this.lucy.phase} · ${this.cfg.lucyCodec}${delta}`, this.lucy.phase);
     }
 
     // Cost guard: an unattended session bills by the second (§Phase 2).
