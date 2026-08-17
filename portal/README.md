@@ -1,9 +1,12 @@
-# Portal — Phase 0 POC
+# Portal — Phase 0 POC ✅
 
 Proves hand tracking, portal polygon geometry, and the gesture state machine
 end-to-end, with **no Lucy and no cost** (PRD §4, Phase 0). The portal is filled
 with a solid colour as a 1:1 stand-in for a Lucy prompt; each close→open cycle
 advances to the next dimension.
+
+**Exit criteria passed — tested by Sne, 2026-08-16.** Phase 1 (Lucy) is unblocked.
+The re-verification steps below are kept for regressions.
 
 ## Run
 
@@ -49,9 +52,10 @@ HTTP, so it needs a tunnel (`ngrok http 5173`) or an HTTPS dev server.
 | `/closure.html` | close detection at five strictnesses side by side — drag the 4 points |
 | `/verify.html` | standalone geometry harness — drag the 4 points |
 
-## Verifying the exit criteria
+## Re-verifying the exit criteria
 
-PRD §4 Phase 0 sets three:
+All three passed on 2026-08-16. Re-run them after any change to geometry, the
+trigger, or the thresholds:
 
 1. **Rectangle and bowtie cases render correctly.** Open
    `/verify.html` and drag `L-idx` below `L-thm`. The caption reports when the

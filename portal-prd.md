@@ -1,8 +1,8 @@
 # Portal — Real-Time Spider-Verse Dimension Portal (PRD + Build Context)
 
-**Status:** Phase 0 POC built (`portal/`). This document is the full context for the project. Read it entirely before writing code.
+**Status:** **Phase 0 complete** — exit criteria tested and signed off by Sne, 2026-08-16 (`portal/`). Phase 1 is unblocked. This document is the full context for the project. Read it entirely before writing code.
 **Owner:** Sne
-**Last updated:** 2026-08-15
+**Last updated:** 2026-08-16
 
 ---
 
@@ -222,7 +222,8 @@ Goal: prove hand tracking, polygon geometry, and the gesture state machine end-t
 - Gesture state machine: each close→open cycle switches the fill color (white → red → blue → ...). This is a 1:1 stand-in for prompt switching.
 - Debug panel with live thresholds, landmark visualization toggle, FPS counter, state readout.
 - **Switch transition:** the portal collapses and reopens onto the fingertips whenever the dimension changes (Sne's idea, see §4.1).
-- **Exit criteria:** rectangle and bowtie cases render correctly; color reliably switches exactly once per close→open cycle across ~20 consecutive cycles; ≥24 fps in Chrome on the macOS dev laptop (the P0 target, §3.1).
+- **Exit criteria — PASSED, tested by Sne 2026-08-16:** rectangle and bowtie cases render correctly; color reliably switches exactly once per close→open cycle across ~20 consecutive cycles; ≥24 fps in Chrome on the macOS dev laptop (the P0 target, §3.1).
+- Settled during Phase 0, beyond the original scope: close detection on **all four points converging** (§2.2.1), and the **`iris`** transition driven **`gestural`ly** (§4.1).
 
 #### 4.1 Switch transition: collapse and reopen
 
@@ -487,7 +488,7 @@ Written for a video-to-video restyle model — describe the transformation of th
 
 ## 9. Working agreements for Claude Code
 
-- Build phase by phase; do not start Phase 1 until Phase 0 exit criteria pass.
+- Build phase by phase. Phase 0's exit criteria passed on 2026-08-16, so **Phase 1 is unblocked**; the same rule now applies to Phase 1's own criteria before Phase 1.5.
 - Desktop first (§3.1). Build and measure against Chrome on macOS. Never trade desktop quality for mobile compatibility, and do not add mobile-specific code paths unasked.
 - Keep the gesture trigger logic behind an interface so alternative trigger strategies can be swapped in.
 - Everything client-side; no secrets committed; API key via env/local input only.
