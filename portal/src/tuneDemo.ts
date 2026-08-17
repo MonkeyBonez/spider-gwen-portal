@@ -93,6 +93,7 @@ root.innerHTML = `
     <div class="controls">
       <label>bias <input type="range" id="bias" min="0" max="1" step="0.05" /><span id="bias-v"></span></label>
       <label>close threshold <input type="range" id="close" min="0.05" max="1.5" step="0.01" /><span id="close-v"></span></label>
+      <label>release threshold <input type="range" id="release" min="0.05" max="2" step="0.01" /><span id="release-v"></span></label>
       <label>open threshold <input type="range" id="open" min="0.05" max="2" step="0.01" /><span id="open-v"></span></label>
       <label>contact mode <select id="mode"></select></label>
       <button id="reset">Reset counts</button>
@@ -133,11 +134,22 @@ root.innerHTML = `
             must close to about a third of a hand's width. Lower = you must close more
             tightly.
           </dd>
+          <dt>release threshold</dt>
+          <dd>
+            <strong>Where the portal starts blooming open again.</strong> Only used by the
+            <code>gestural</code> timing. Set it above the close threshold and the portal
+            stays collapsed after your hands have technically stopped counting as shut —
+            they get a head start and the portal catches up. Set it equal to the close
+            threshold and the bloom begins the instant you leave the closed band. It is
+            clamped up to the close threshold, since blooming while still counted as shut
+            makes no sense.
+          </dd>
           <dt>open threshold</dt>
           <dd>
             The distance you must get back <em>over</em> before another switch can fire.
             It sits above the close threshold on purpose, so a hand trembling right at
-            the line can't fire twice.
+            the line can't fire twice. <em>This does not drive the animation</em> — by the
+            time you reach it the bloom is already underway.
           </dd>
           <dt>worst-side bias</dt>
           <dd>
@@ -168,6 +180,8 @@ const closeEl = root.querySelector<HTMLInputElement>('#close')!;
 const closeV = root.querySelector<HTMLElement>('#close-v')!;
 const openEl = root.querySelector<HTMLInputElement>('#open')!;
 const openV = root.querySelector<HTMLElement>('#open-v')!;
+const releaseEl = root.querySelector<HTMLInputElement>('#release')!;
+const releaseV = root.querySelector<HTMLElement>('#release-v')!;
 const modeEl = root.querySelector<HTMLSelectElement>('#mode')!;
 
 for (const m of CONTACT_MODES) {
@@ -220,6 +234,13 @@ function syncControls(): void {
   closeV.textContent = cfg.closeThreshold.toFixed(2);
   openEl.value = String(cfg.openThreshold);
   openV.textContent = cfg.openThreshold.toFixed(2);
+  releaseEl.value = String(cfg.releaseThreshold);
+  // Show the effective value when it has been clamped up by the close threshold.
+  const effective = Math.max(cfg.closeThreshold, cfg.releaseThreshold);
+  releaseV.textContent =
+    effective > cfg.releaseThreshold
+      ? `${cfg.releaseThreshold.toFixed(2)} → ${effective.toFixed(2)}`
+      : cfg.releaseThreshold.toFixed(2);
   modeEl.value = cfg.contactMode;
 
   // Mark the rung the app's setting is closest to. The slider is continuous and
@@ -256,6 +277,11 @@ closeEl.oninput = () => {
 };
 openEl.oninput = () => {
   cfg.openThreshold = Number(openEl.value);
+  saveConfig(cfg);
+  syncControls();
+};
+releaseEl.oninput = () => {
+  cfg.releaseThreshold = Number(releaseEl.value);
   saveConfig(cfg);
   syncControls();
 };

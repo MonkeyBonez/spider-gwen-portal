@@ -252,7 +252,19 @@ transition is two independently triggered steps rather than one timed sequence:
 | --- | --- | --- |
 | collapse starts | when the switch fires | when the four points come together (§2.2.1) |
 | how long it stays shut | `holdMs`, a fixed number | **as long as the hands stay together** |
-| reopen starts | when the timer expires | **when the hands start moving apart** |
+| reopen starts | when the timer expires | **when the hands have moved apart past `releaseThreshold`** |
+
+**The bloom point is its own threshold.** `releaseThreshold` (default 0.6) is
+deliberately *above* `closeThreshold` (0.5), so the portal stays collapsed past the
+point where a close stops counting: the hands get a head start and the portal catches
+up. That lag is the effect — see "the variable that actually matters" below. Three
+distinct numbers, easily confused:
+
+| Threshold | What it does |
+| --- | --- |
+| `closeThreshold` | how near counts as shut — fires the collapse **and the switch** |
+| `releaseThreshold` | where the reopen animation begins. Clamped up to `closeThreshold`; above `openThreshold` it has no further effect, since the fast-open catch fires there regardless |
+| `openThreshold` | re-arms the trigger for the next cycle. **Does not drive the animation** — the bloom is already underway by then |
 
 Why this is the better model: a fixed hold cannot know what the hands are doing, so it
 either reopens *behind still-closed hands* — the portal blooms into a dimension the
@@ -449,7 +461,7 @@ say so before they record rather than after.
 
 - Landmark overlay on/off; portal polygon outline on/off. (In Phase 1.5 this overlay grows into the performer-facing skeleton indicator — see §4.2 — so build it as one component, not two.)
 - Selectors: contact mode (§2.2.1), switch transition (§4.1).
-- Sliders: EMA α, worst-side bias (§2.2.1), close threshold, open threshold, debounce frames, cooldown ms, sync delay Δ, transition collapse/hold/reopen/overshoot (§4.1).
+- Sliders: EMA α, worst-side bias (§2.2.1), close threshold, release threshold, open threshold, debounce frames, cooldown ms, sync delay Δ, transition collapse/hold/reopen/overshoot/max-hold (§4.1).
 - Readouts: FPS, state machine state, normalized gap/area, `gap` under all three contact modes at once, the two side separations behind the current `gap` (`sides a/b` — a lopsided pair is the case the worst-side bias exists to reject), Lucy connection state, generation seconds used.
 - Calibration (§4.3): a "run tutorial" button, the measured position-1/position-2 `gap` values, and the thresholds fitted from them. Fitted values must be visibly distinguishable from defaults, and overridable by the sliders above.
 - Latency (§2.3.1): a "measure latency" action that enables `debugQuality` briefly and reads back `ttffMs` / `g2gMs` / `g2gDropRatio`, with the Δ actually in use shown alongside. Later, if built: the live `onConnectionQuality` verdict and its `limitingFactor`.

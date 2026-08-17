@@ -44,6 +44,21 @@ export interface Config {
   closeThreshold: number;
   /** Normalised gap above which the portal counts as re-opened (hysteresis). */
   openThreshold: number;
+  /**
+   * Normalised gap at which the *reopen animation* starts, once a close has
+   * fired (§4.1, `gestural` timing only). Decoupled from `closeThreshold` so the
+   * portal can stay collapsed past the point where a close stops counting — the
+   * hands get a head start and the portal catches up.
+   *
+   * Effectively `max(closeThreshold, releaseThreshold)`: a value below the close
+   * threshold would mean blooming while still counted as shut, so it is clamped
+   * up at the point of use rather than being allowed to invert.
+   *
+   * Setting it *above* `openThreshold` has no further effect — the fast-open
+   * catch fires the release at `openThreshold` so it can never be lost behind
+   * the re-arm. So the useful range is `[closeThreshold, openThreshold]`.
+   */
+  releaseThreshold: number;
   /** Frames the close condition must hold before CLOSED latches. */
   debounceFrames: number;
   /** Minimum ms between two dimension switches. */
@@ -106,6 +121,7 @@ export const DEFAULT_CONFIG: Config = {
   worstSideBias: DEFAULT_WORST_SIDE_BIAS,
   closeThreshold: 0.5,
   openThreshold: 0.9,
+  releaseThreshold: 0.6,
   debounceFrames: 3,
   cooldownMs: 500,
   velocityEpsilon: 0.4,

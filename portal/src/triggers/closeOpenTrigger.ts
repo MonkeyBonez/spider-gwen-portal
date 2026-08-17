@@ -10,6 +10,9 @@
  *   period to settle before the hands reveal it again.
  * - Moving apart from CLOSED (gap back above `openThreshold`) only re-arms for
  *   the next cycle; it never fires. One cycle, one switch.
+ * - Separately, `release` fires once the gap climbs past `releaseThreshold` while
+ *   moving apart. That drives the reopen half of the gestural transition (§4.1)
+ *   and is independent of both the switch and the re-arm.
  * - `cooldownMs` prevents rapid-fire flapping.
  *
  * Tracking dropouts do not reset the machine immediately: an arm survives a
@@ -86,12 +89,15 @@ export class CloseOpenTrigger implements GestureTrigger {
       // Armed: the switch already fired. Reopening only re-arms for the next
       // cycle, so one close→open cycle can never produce two switches.
       this.state = 'CLOSED';
-      const separating = opening && !isTouching;
-      if (separating) this.state = 'OPENING';
-      // `release` marks the *start* of the separation, so the reopen animation
-      // tracks the hands. A fast open can skip straight past OPENING to OPEN, so
-      // that counts too — otherwise the release would be lost entirely.
-      if (!this.released && (separating || isOpen)) {
+      if (opening && !isTouching) this.state = 'OPENING';
+      // `release` starts the reopen animation. It has its own threshold, at or
+      // above the close threshold, so the portal can stay collapsed past the
+      // point where a close stops counting and then catch the hands up (§4.1).
+      // A fast open can clear the whole band between two frames, so `isOpen`
+      // counts too — otherwise the release would be lost and the portal would
+      // sit shut until `maxHoldMs` bailed it out.
+      const releaseAt = Math.max(cfg.closeThreshold, cfg.releaseThreshold);
+      if (!this.released && ((opening && s.gap >= releaseAt) || isOpen)) {
         this.released = true;
         release = true;
       }

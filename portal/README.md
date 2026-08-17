@@ -149,10 +149,24 @@ selectable as controls.
 
 `gestural` splits the animation into two independently triggered halves: it collapses
 when the four points come together and **stays shut for as long as they stay
-together**, then reopens the moment they start moving apart. A fixed hold can't know
-what the hands are doing, so it either blooms behind still-closed hands or lags a fast
-cycle; this can't. `holdMs` applies to `timed` only — under `gestural` the only timer
-is `maxHoldMs`, a safety valve for hands leaving the frame while shut.
+together**, then reopens once they have moved apart past `releaseThreshold`. A fixed
+hold can't know what the hands are doing, so it either blooms behind still-closed
+hands or lags a fast cycle; this can't. `holdMs` applies to `timed` only — under
+`gestural` the only timer is `maxHoldMs`, a safety valve for hands leaving the frame
+while shut.
+
+**Three thresholds, easy to confuse:**
+
+| Threshold | Default | What it does |
+| --- | --- | --- |
+| `closeThreshold` | 0.5 | how near counts as shut — fires the collapse **and the switch** |
+| `releaseThreshold` | 0.6 | where the reopen begins. Above the close threshold on purpose, so the hands get a head start and the portal trails then catches up |
+| `openThreshold` | 0.9 | re-arms for the next cycle. **Does not drive the animation** |
+
+Raise `releaseThreshold` for more lag, drop it to `closeThreshold` for none. It is
+clamped up to the close threshold (blooming while still counted shut makes no sense),
+and above `openThreshold` it stops mattering — the fast-open catch fires there anyway
+so a quick open can't lose the release.
 
 Press `T` to flip timing live, or compare on synthetic hands at `/transitions.html`:
 push `hold shut` up and watch `timed` reopen behind the closed hands while `gestural`

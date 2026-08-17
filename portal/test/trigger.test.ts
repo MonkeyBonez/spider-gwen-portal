@@ -277,3 +277,82 @@ describe('release event (gestural transition, PRD §4.1)', () => {
     expect(events(trace).releases).toHaveLength(0);
   });
 });
+
+describe('releaseThreshold decouples the bloom from the close (PRD §4.1)', () => {
+  /** Gap at each frame where `release` fired. */
+  function releaseGaps(trace: number[], cfgOverride: Partial<Config> = {}): number[] {
+    const trigger = new CloseOpenTrigger();
+    const cfg: Config = { ...DEFAULT_CONFIG, ...cfgOverride };
+    let prevGap = trace[0];
+    let velocity = 0;
+    let t = 0;
+    const gaps: number[] = [];
+    for (const gap of trace) {
+      t += DT * 1000;
+      const instant = (gap - prevGap) / DT;
+      velocity += (instant - velocity) * 0.35;
+      prevGap = gap;
+      const r = trigger.update(
+        { t, dt: DT, handsPresent: true, gap, area: gap * gap, gapVelocity: velocity },
+        cfg,
+      );
+      if (r.release) gaps.push(gap);
+    }
+    return gaps;
+  }
+
+  /** Close, then open slowly enough to land a frame in every band. */
+  const SLOW_CYCLE = [
+    ...Array.from({ length: 10 }, () => 1.6),
+    ...Array.from({ length: 8 }, (_, i) => 1.6 - (1.55 * (i + 1)) / 8), // close
+    ...Array.from({ length: 6 }, () => 0.05), // held shut
+    ...Array.from({ length: 40 }, (_, i) => 0.05 + (1.55 * (i + 1)) / 40), // slow open
+    ...Array.from({ length: 10 }, () => 1.6),
+  ];
+
+  it('blooms at the release threshold, not the close threshold', () => {
+    const gaps = releaseGaps(SLOW_CYCLE);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toBeGreaterThanOrEqual(DEFAULT_CONFIG.releaseThreshold);
+  });
+
+  it('raising it makes the portal wait longer before blooming', () => {
+    // Kept under `openThreshold` (0.9): above it the fast-open catch fires first
+    // and effectively caps the release — see the fast-open test below.
+    const early = releaseGaps(SLOW_CYCLE, { releaseThreshold: 0.5 })[0];
+    const late = releaseGaps(SLOW_CYCLE, { releaseThreshold: 0.8 })[0];
+    expect(late).toBeGreaterThan(early);
+    expect(late).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('is clamped up to the close threshold rather than inverting', () => {
+    // A release below the close threshold would bloom while still counted shut.
+    const gaps = releaseGaps(SLOW_CYCLE, { closeThreshold: 0.5, releaseThreshold: 0.1 });
+    expect(gaps[0]).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it('still releases exactly once per cycle at the new threshold', () => {
+    const trace: number[] = [];
+    for (let i = 0; i < 20; i++) trace.push(...SLOW_CYCLE);
+    expect(releaseGaps(trace)).toHaveLength(20);
+  });
+
+  it('a release above the open threshold still fires, via the fast-open catch', () => {
+    // openThreshold re-arms the trigger; the release must not be lost behind it.
+    const gaps = releaseGaps(SLOW_CYCLE, { openThreshold: 0.9, releaseThreshold: 2.5 });
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toBeGreaterThan(0.9);
+  });
+
+  it('does not bloom when the hands only drift inside the closed band', () => {
+    // Opens to 0.55 — past the close threshold but short of the release one.
+    const trace = [
+      ...Array.from({ length: 10 }, () => 1.6),
+      ...Array.from({ length: 8 }, (_, i) => 1.6 - (1.55 * (i + 1)) / 8),
+      ...Array.from({ length: 6 }, () => 0.05),
+      ...Array.from({ length: 20 }, (_, i) => 0.05 + (0.5 * (i + 1)) / 20),
+      ...Array.from({ length: 20 }, () => 0.55),
+    ];
+    expect(releaseGaps(trace)).toHaveLength(0);
+  });
+});
