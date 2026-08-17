@@ -1,10 +1,19 @@
 /**
- * Phase 0 dimensions: a solid colour per dimension, standing in 1:1 for the
- * Lucy prompt library (PRD §4 Phase 0, §6).
+ * The dimensions the portal cycles through (PRD §6).
  *
- * In Phase 1 the renderer draws Lucy's stream instead of `color`, and the
- * `prompt` field is what gets handed to `setPrompt` — the cycling logic is
- * unchanged.
+ * `prompt` goes to `setPrompt` at the instant the portal is fully shut.
+ * `color` fills the portal before Lucy's first frame decodes — the cold start
+ * is 4–5s, so it is on screen for a real amount of time.
+ *
+ * **Right now this is a prompt-phrasing A/B, not six worlds.** All four entries
+ * describe the same comic look and vary only in how it is asked for, so that a
+ * close→open cycle steps between phrasings with everything else held constant.
+ * Names say what varies rather than what it looks like, because the HUD chip is
+ * the only way to tell which one is on screen when the outputs are similar.
+ *
+ * Prompt text is **verbatim as written by Sne**. Wording is the experiment, so
+ * it does not get tidied — not the capitalisation, not the missing "is a" in
+ * `mask-only`. See `PROMPT_LIBRARY` below for the six-world set this replaced.
  */
 
 export interface Dimension {
@@ -14,6 +23,47 @@ export interface Dimension {
 }
 
 export const DIMENSIONS: Dimension[] = [
+  {
+    // No subject at all — pure rendering technique. The control: if this reads
+    // as well as the others, the subject clause is not doing the work.
+    name: 'style-only',
+    color: '#ffffff',
+    prompt: 'Comic-book animated, halftone shading, bold ink outlines',
+  },
+  {
+    // Subject + costume + technique. The one that landed on the first run.
+    name: 'style+subject',
+    color: '#e0332c',
+    prompt:
+      'Comic-book animated superhero in a red-and-blue spider suit, halftone shading, bold ink outlines',
+  },
+  {
+    // Names the subject explicitly and adds multiverse framing, but drops every
+    // rendering instruction — so the look has to come from "other part of
+    // multiverse" alone.
+    name: 'multiverse',
+    color: '#2f7bff',
+    prompt: 'Subject is a Superhero in a red-and-blue spider suit in other part of multiverse',
+  },
+  {
+    // The shortest, and the only one that asks for a mask rather than a suit —
+    // worth watching whether it transforms the face more and the body less.
+    name: 'mask-only',
+    color: '#c84bff',
+    prompt: 'Subject Superhero in a red-and-blue spider mask',
+  },
+];
+
+/**
+ * The original six-world set from PRD §6, kept so it is not lost while the
+ * phrasing A/B runs. Swap back by assigning this to `DIMENSIONS`.
+ *
+ * Note what separates these from the four above: each names a subject, what
+ * they are wearing, *and* a rendering technique. `pixel` and `anime` are the
+ * exceptions — they describe only a world, with no person in it, which is a
+ * weak brief for a model whose job is transforming the person in frame.
+ */
+export const PROMPT_LIBRARY: Dimension[] = [
   {
     name: 'Comic',
     color: '#ffffff',

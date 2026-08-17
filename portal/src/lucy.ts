@@ -315,16 +315,19 @@ export class LucySession {
    * recorded — that ack is *not* the same as the output visibly settling, which
    * is the number PRD §7 actually wants, but it is the floor for it.
    */
-  async setPrompt(prompt: string): Promise<void> {
+  async setPrompt(prompt: string, label?: string): Promise<void> {
     if (!this.client) return;
     const at = performance.now();
     this.lastPromptAt = at;
     this.lastPromptAckMs = null;
-    sessionLog.log('prompt:sent', { prompt });
+    // `label` is carried through to both log lines so a phrasing A/B can be
+    // read straight out of the file — "which one was on screen at t=42s" should
+    // not require joining against the preceding `switch` entry.
+    sessionLog.log('prompt:sent', { label, prompt });
     try {
       await this.client.setPrompt(prompt, { enhance: false });
       this.lastPromptAckMs = performance.now() - at;
-      sessionLog.log('prompt:ack', { ackMs: Math.round(this.lastPromptAckMs) });
+      sessionLog.log('prompt:ack', { label, ackMs: Math.round(this.lastPromptAckMs) });
     } catch (err) {
       // A rejected prompt leaves the previous dimension on screen, which is a
       // cosmetic failure — not a reason to drop a paid session.

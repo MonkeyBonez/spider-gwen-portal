@@ -275,7 +275,10 @@ export class App {
       // into the new prompt — which is the whole reason the swap happens here
       // rather than on the trigger (§4.1). Not awaited: blocking the render
       // loop on a network ack would stall the collapse animation itself.
-      void this.lucy?.setPrompt(DIMENSIONS[this.dimensionIndex].prompt);
+      void this.lucy?.setPrompt(
+        DIMENSIONS[this.dimensionIndex].prompt,
+        DIMENSIONS[this.dimensionIndex].name,
+      );
     }
 
     // Cost guard: an unattended session bills by the second (§Phase 2).
