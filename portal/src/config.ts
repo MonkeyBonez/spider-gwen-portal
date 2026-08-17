@@ -102,6 +102,15 @@ export interface Config {
   /** Delay applied to the raw feed + mask to align with Lucy's stream. */
   syncDelayMs: number;
 
+  // --- Lucy session (Phase 1, §3) ------------------------------------------
+  /**
+   * Disconnect Lucy after this long with no hands detected. The stream bills
+   * per generation-second, so an unattended session is money burning — but a
+   * reconnect costs a 4–5s cold start (§2.3.1), so this trades one against the
+   * other rather than being as aggressive as it could be. 0 disables it.
+   */
+  idleDisconnectMs: number;
+
   // --- debug ----------------------------------------------------------------
   showLandmarks: boolean;
   showPolygonOutline: boolean;
@@ -147,6 +156,8 @@ export const DEFAULT_CONFIG: Config = {
   twistDegrees: 90,
 
   syncDelayMs: 0,
+
+  idleDisconnectMs: 60_000,
 
   showLandmarks: false,
   showPolygonOutline: true,

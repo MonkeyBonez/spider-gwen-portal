@@ -34,6 +34,12 @@ export interface RenderInput {
   /** 0..1 fade so the portal doesn't pop when a hand drops out (§2.1). */
   opacity: number;
   fill: string;
+  /**
+   * Lucy's stream, drawn inside the portal when it has decoded frames. Null
+   * falls back to the flat `fill` colour, which is what covers the ~4–5s cold
+   * start (PRD §2.3.1) and Phase 0's no-Lucy mode with the same code path.
+   */
+  source?: HTMLVideoElement | null;
 }
 
 export class Renderer {
@@ -80,8 +86,22 @@ export class Renderer {
       const pts = polygonOrder(input.portal).map((p) => this.toScreen(p, cfg));
 
       this.layerCtx.clearRect(0, 0, w, h);
-      this.layerCtx.fillStyle = input.fill; // Phase 1: drawImage(lucyVideo, ...)
-      this.layerCtx.fillRect(0, 0, w, h);
+      if (input.source) {
+        // Lucy's frame has to carry the *same* mirror transform as the raw feed
+        // in step 1. The mask is built in screen space, so drawing the portal
+        // contents unmirrored would put a correctly-placed window over a
+        // laterally-flipped world — the seam at the polygon edge would jump.
+        this.layerCtx.save();
+        if (cfg.mirror) {
+          this.layerCtx.translate(w, 0);
+          this.layerCtx.scale(-1, 1);
+        }
+        drawCover(this.layerCtx, input.source, w, h);
+        this.layerCtx.restore();
+      } else {
+        this.layerCtx.fillStyle = input.fill;
+        this.layerCtx.fillRect(0, 0, w, h);
+      }
 
       this.maskCtx.clearRect(0, 0, w, h);
       this.maskCtx.save();
@@ -155,6 +175,34 @@ export class Renderer {
     }
     ctx.restore();
   }
+}
+
+/**
+ * Draw `src` filling `w`×`h`, cropping the overflow rather than stretching.
+ *
+ * `lucy-2.5` is 1280×720 and so is our canvas, so this is normally a straight
+ * 1:1 blit. It exists for the cases where it isn't — a camera that ignored the
+ * requested size, or a model with a different aspect (`lucy-restyle-2` is
+ * 1280×704). Letterboxing would misalign the portal contents against the mask;
+ * cropping keeps the centre of the frame where the performer is.
+ */
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  src: HTMLVideoElement,
+  w: number,
+  h: number,
+): void {
+  const sw = src.videoWidth;
+  const sh = src.videoHeight;
+  if (sw === 0 || sh === 0) return;
+  if (sw === w && sh === h) {
+    ctx.drawImage(src, 0, 0);
+    return;
+  }
+  const scale = Math.max(w / sw, h / sh);
+  const dw = sw * scale;
+  const dh = sh * scale;
+  ctx.drawImage(src, (w - dw) / 2, (h - dh) / 2, dw, dh);
 }
 
 function pathOf(pts: Pt[]): Path2D {

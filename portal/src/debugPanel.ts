@@ -72,6 +72,14 @@ const SLIDERS: SliderSpec[] = [
   { key: 'reopenOvershoot', label: 'Reopen overshoot', min: 0, max: 3, step: 0.1, hint: '0 = no pop' },
   { key: 'twistDegrees', label: 'Twist°', min: 0, max: 360, step: 15, hint: 'twist variant only' },
   { key: 'syncDelayMs', label: 'Sync Δ (Phase 1)', min: 0, max: 500, step: 10 },
+  {
+    key: 'idleDisconnectMs',
+    label: 'Idle disconnect',
+    min: 0,
+    max: 300_000,
+    step: 15_000,
+    hint: 'drop the paid Lucy stream after this long with no hands · 0 = never',
+  },
 ];
 
 const TOGGLES: { key: BoolKeys; label: string }[] = [

@@ -127,6 +127,59 @@ button {
 
 button:disabled { opacity: 0.5; cursor: default; }
 
+.button-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+button.secondary {
+  background: transparent;
+  color: var(--fg);
+}
+
+.small { font-size: 12px; max-width: 46ch; }
+
+/* --- API key entry -------------------------------------------------------- */
+
+.key-row {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  margin-top: 8px;
+}
+
+.key-row label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.key-row input {
+  width: min(420px, 80vw);
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--fg);
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  text-align: center;
+}
+
+.key-row input:focus {
+  outline: none;
+  border-color: var(--fg);
+}
+
+/*
+ * The Lucy chip is the one HUD element that reports a paid resource, so it is
+ * colour-coded: amber while it costs nothing yet but is on its way, green once
+ * frames are actually arriving, red when it failed.
+ */
+#hud-lucy[data-phase='connecting'],
+#hud-lucy[data-phase='queued'],
+#hud-lucy[data-phase='reconnecting'] { color: #ffb020; }
+#hud-lucy[data-phase='live'] { color: #2ecc71; }
+#hud-lucy[data-phase='error'] { color: #ff7a7a; }
+
 .error {
   color: #ff7a7a;
   font-size: 14px;

@@ -26,6 +26,7 @@ import {
 } from './portalTransition';
 import { CloseOpenTrigger } from './triggers/closeOpenTrigger';
 import type { GestureTrigger } from './triggers/types';
+import { LucySession, resolveApiKey } from './lucy';
 
 const PORTAL_FADE_MS = 120;
 /** EMA on d(gap)/dt — the raw derivative is far too noisy to threshold on. */
@@ -36,6 +37,13 @@ export interface Hud {
   dimension: HTMLElement;
   counter: HTMLElement;
   toast: HTMLElement;
+  /** Lucy connection state. Stays hidden in camera-only mode. */
+  lucy: HTMLElement;
+}
+
+export interface AppOptions {
+  /** Connect Lucy at start. False runs camera-only, which costs nothing. */
+  useLucy?: boolean;
 }
 
 export class App {
@@ -66,10 +74,16 @@ export class App {
   private running = false;
   private toastTimer = 0;
 
+  private lucy: LucySession | null = null;
+  private wantLucy: boolean;
+  /** Last time hands were seen, for the idle-disconnect cost guard. */
+  private lastHandsAt = 0;
+
   private hud: Hud;
 
-  constructor(root: HTMLElement, hud: Hud) {
+  constructor(root: HTMLElement, hud: Hud, options: AppOptions = {}) {
     this.hud = hud;
+    this.wantLucy = options.useLucy ?? false;
 
     const canvas = document.createElement('canvas');
     canvas.className = 'stage';
@@ -112,14 +126,60 @@ export class App {
     this.setStatus('');
     this.running = true;
     this.lastFrameAt = performance.now();
+    this.lastHandsAt = performance.now();
     requestAnimationFrame((t) => this.loop(t));
+
+    // Deliberately not awaited: the camera loop should be running and tracking
+    // hands during Lucy's 4–5s cold start, not frozen behind it. The portal
+    // shows its dimension colour until the first frame decodes.
+    if (this.wantLucy) void this.connectLucy();
   }
 
   stop(): void {
     this.running = false;
+    this.lucy?.disconnect();
+    this.lucy = null;
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     this.tracker.close();
+  }
+
+  /** Connect Lucy, or report why not. Safe to call when already connected. */
+  async connectLucy(): Promise<void> {
+    if (this.lucy || !this.stream) return;
+    const { key, source } = resolveApiKey();
+    if (!key) {
+      this.setLucyChip('no API key', 'error');
+      this.toast('No API key — add one to portal/.env.local');
+      return;
+    }
+
+    const session = new LucySession({
+      apiKey: key,
+      // Connect straight into the current dimension rather than dimension #1,
+      // so reconnecting mid-session doesn't silently rewind the universe.
+      initialPrompt: DIMENSIONS[this.dimensionIndex].prompt,
+      onPhase: (phase, detail) => this.setLucyChip(detail, phase),
+    });
+    this.lucy = session;
+    this.setLucyChip(`connecting (key: ${source})`, 'connecting');
+
+    try {
+      await session.connect(this.stream);
+    } catch (err) {
+      this.lucy = null;
+      const msg = err instanceof Error ? err.message : String(err);
+      this.setLucyChip('failed', 'error');
+      this.toast(`Lucy: ${msg}`);
+      console.error('Lucy connect failed', err);
+    }
+  }
+
+  disconnectLucy(reason = 'disconnected'): void {
+    if (!this.lucy) return;
+    this.lucy.disconnect();
+    this.lucy = null;
+    this.setLucyChip(reason, 'idle');
   }
 
   private loop(t: number): void {
@@ -193,10 +253,25 @@ export class App {
       : this.transition.update(t, spec);
 
     if (transition.swap) {
-      // Phase 1 swaps this for `realtimeClient.setPrompt(nextDimension.prompt)`.
       this.dimensionIndex = (this.dimensionIndex + 1) % DIMENSIONS.length;
       this.switches++;
       this.holdStartedAt = t;
+      // Fired at zero closure, so the portal is fully shut while Lucy settles
+      // into the new prompt — which is the whole reason the swap happens here
+      // rather than on the trigger (§4.1). Not awaited: blocking the render
+      // loop on a network ack would stall the collapse animation itself.
+      void this.lucy?.setPrompt(DIMENSIONS[this.dimensionIndex].prompt);
+    }
+
+    // Cost guard: an unattended session bills by the second (§Phase 2).
+    if (handsPresent) this.lastHandsAt = t;
+    if (
+      this.lucy &&
+      this.cfg.idleDisconnectMs > 0 &&
+      t - this.lastHandsAt > this.cfg.idleDisconnectMs
+    ) {
+      this.disconnectLucy('idle — disconnected');
+      this.toast('Lucy disconnected (idle). Press C to reconnect.');
     }
 
     // Fade rather than pop when a hand drops out (PRD §2.1).
@@ -219,6 +294,9 @@ export class App {
         portal: rendered,
         opacity: this.opacity,
         fill: dimension.color,
+        // Falls back to the flat colour whenever Lucy has nothing decoded —
+        // cold start, a dropped connection, or camera-only mode. Same path.
+        source: this.lucy?.frame ?? null,
       },
       this.cfg,
     );
@@ -264,10 +342,43 @@ export class App {
           transition.phase === 'hold'
             ? `${((t - this.holdStartedAt) / 1000).toFixed(1)}s${this.cfg.maxHoldMs > 0 ? ` / ${(this.cfg.maxHoldMs / 1000).toFixed(1)}s cap` : ''}`
             : '—',
+        ...this.lucyReadouts(),
       },
     });
 
     requestAnimationFrame((next) => this.loop(next));
+  }
+
+  /**
+   * The Phase 1 numbers. Δ (`g2gMs`) comes from the SDK's `stats` event, never
+   * from `onConnectionQuality`, which is debounced and would sit stale (§2.3.1).
+   *
+   * `since prompt` is the one to watch for PRD §7's open question — how long
+   * Lucy takes to *visibly* settle after a `setPrompt`. The ack tells you the
+   * request landed; only your eyes tell you the pixels changed, so this counts
+   * up beside the portal while you watch it turn over.
+   */
+  private lucyReadouts(): Record<string, string> {
+    if (!this.lucy) return { lucy: this.wantLucy ? 'disconnected' : 'off (camera only)' };
+    const s = this.lucy.stats;
+    const since = this.lucy.msSincePrompt(performance.now());
+    const ack = this.lucy.promptAckMs;
+    return {
+      lucy: this.lucy.phase + (this.lucy.frame ? '' : ' (no frames yet)'),
+      'Δ g2g': s.g2gMs != null ? `${Math.round(s.g2gMs)}ms (p90 ${fmtMs(s.p90Ms)}, n=${s.sampleCount})` : 'measuring…',
+      ttff: fmtMs(s.ttffMs ?? this.lucy.localTtffMs),
+      'prompt ack': ack != null ? `${Math.round(ack)}ms` : since != null ? 'pending…' : '—',
+      'since prompt': since != null ? `${(since / 1000).toFixed(1)}s` : '—',
+      billed: `${s.secondsUsed.toFixed(0)}s`,
+      ...(s.queue ? { queue: `${s.queue.position}/${s.queue.size}` } : {}),
+      ...(this.lucy.error ? { 'lucy error': this.lucy.error } : {}),
+    };
+  }
+
+  private setLucyChip(text: string, phase: string): void {
+    this.hud.lucy.textContent = `lucy: ${text}`;
+    this.hud.lucy.classList.remove('hidden');
+    this.hud.lucy.dataset.phase = phase;
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -283,6 +394,17 @@ export class App {
       this.trigger.reset();
       this.transition.reset();
       this.gesturalTransition.reset();
+    } else if (key === 'c') {
+      // Manual connect/disconnect. Explicit rather than automatic, because the
+      // session bills per second and camera-only is free.
+      if (this.lucy) {
+        this.disconnectLucy();
+        this.toast('Lucy disconnected');
+      } else {
+        this.wantLucy = true;
+        this.toast('Connecting Lucy…');
+        void this.connectLucy();
+      }
     } else if (key === 't') {
       const timings = TRANSITION_TIMINGS;
       const next = timings[(timings.indexOf(this.cfg.transitionTiming) + 1) % timings.length];
@@ -337,6 +459,10 @@ export class App {
     this.hud.status.textContent = text;
     this.hud.status.classList.toggle('hidden', !text);
   }
+}
+
+function fmtMs(v: number | null): string {
+  return v == null ? '—' : v >= 1000 ? `${(v / 1000).toFixed(1)}s` : `${Math.round(v)}ms`;
 }
 
 function waitForMetadata(video: HTMLVideoElement): Promise<void> {

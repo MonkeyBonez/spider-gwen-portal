@@ -1,22 +1,52 @@
-# Portal — Phase 0 POC ✅
+# Portal — Phase 1 (Lucy) in progress
 
-Proves hand tracking, portal polygon geometry, and the gesture state machine
-end-to-end, with **no Lucy and no cost** (PRD §4, Phase 0). The portal is filled
-with a solid colour as a 1:1 stand-in for a Lucy prompt; each close→open cycle
-advances to the next dimension.
+Hand tracking, portal polygon geometry, and the gesture state machine, with a
+**live Lucy stream composited inside the portal**. Each close→open cycle fires
+`setPrompt` at the instant the portal is fully shut, so the dimension turns over
+behind a closed window.
 
-**Exit criteria passed — tested by Sne, 2026-08-16.** Phase 1 (Lucy) is unblocked.
-The re-verification steps below are kept for regressions.
+**Phase 0 exit criteria passed — tested by Sne, 2026-08-16.** The
+re-verification steps below are kept for regressions.
 
 ## Run
 
 ```bash
 npm install     # also fetches the WASM runtime + hand model (~20MB, gitignored)
+cp .env.example .env.local   # then paste your Decart key into it
 npm run dev     # http://localhost:5173
 npm test        # state machine + geometry unit tests
 ```
 
 Camera access needs a secure context — `localhost` covers desktop dev.
+
+## The API key
+
+Two ways in, checked in this order:
+
+1. **`portal/.env.local`** — `VITE_DECART_API_KEY=...`. Gitignored. Read behind
+   an `import.meta.env.DEV` guard, which Vite compiles to `false` for a
+   production build, so the branch and the inlined key are dropped and **`dist/`
+   cannot carry the key**. Dev convenience with the leak path closed.
+2. **The start screen**, kept in localStorage. This is the path a real user
+   takes (PRD Phase 2, BYO key) — leave `.env.local` blank to test it.
+
+`.env.example` is the tracked template and must stay key-free. A
+`.githooks/pre-commit` hook blocks env files and key-shaped strings; enable it
+in a fresh clone with `git config core.hooksPath .githooks`.
+
+## Cost
+
+The Lucy stream bills **per generation-second**, so spending is deliberate:
+
+- **"Camera only (free)"** on the start screen runs the entire gesture pipeline
+  with a flat colour in the portal. Nothing connects, and the ~500kB LiveKit
+  bundle isn't even downloaded.
+- **`C`** connects or disconnects Lucy mid-session.
+- **Idle disconnect** drops the stream after 60s with no hands (slider in the
+  panel; `0` disables). Set against a 4–5s reconnect cold start, not zero.
+- **`billed`** in the debug panel is the SDK's own `generationTick`, not a local
+  clock.
+- Closing the tab disconnects via `pagehide`.
 
 Target is **desktop browsers, Chrome on macOS first** (PRD §3.1). Safari on macOS is
 worth checking before any demo, since its canvas `filter` and `MediaRecorder` support
@@ -33,6 +63,7 @@ HTTP, so it needs a tunnel (`ngrok http 5173`) or an HTTPS dev server.
 | `Space` | play the transition manually. Under `gestural`, one tap collapses and the next reopens |
 | `T` | flip the transition timing (`gestural` ↔ `timed`) |
 | `R` | reset the switch counter and state machine |
+| `C` | connect / disconnect the Lucy stream |
 | `1`–`4` | pick the switch transition and play it immediately |
 
 ## Layout
@@ -40,6 +71,7 @@ HTTP, so it needs a tunnel (`ngrok http 5173`) or an HTTPS dev server.
 | Path | Role |
 | --- | --- |
 | `src/handTracking.ts` | MediaPipe Tasks `HandLandmarker`, VIDEO mode, 2 hands, GPU |
+| `src/lucy.ts` | Decart realtime session — connect, `setPrompt`, Δ/billing stats |
 | `src/geometry.ts` | portal polygon, normalised `gap`/`area`, EMA smoothing |
 | `src/triggers/types.ts` | `GestureTrigger` interface — swap in alternative strategies |
 | `src/triggers/closeOpenTrigger.ts` | trigger v1, the PRD §2.2 state machine |
@@ -189,13 +221,34 @@ The timing sliders matter more than the variant choice — a reopen tween close 
 hand-opening speed (~150–250ms) is nearly invisible. Push it slower for a portal that
 lags and catches up, or faster for one that beats the hands open.
 
-## Notes for Phase 1
+## Reading the Lucy numbers (PRD §2.3.1)
 
-- `renderer.ts` already composites through an offscreen layer + mask, so Lucy
-  drops in by replacing the `fillRect` with `drawImage(lucyVideo, …)`.
-- `dimensions.ts` carries the §6 prompt strings; the advance path becomes
-  `setPrompt(DIMENSIONS[i].prompt)` on the trigger's `closed` signal.
-- `syncDelayMs` is in the config and on the panel but is **not yet wired** — the
-  §2.3 V2 ring buffer is Phase 1 work.
-- The canvas is locked to the camera's native resolution (1280×720 requested) to
-  match Lucy's 720p output (PRD §7).
+In the debug panel while connected:
+
+| Row | Means |
+| --- | --- |
+| `lucy` | session phase; `(no frames yet)` during the cold start |
+| `Δ g2g` | **glass-to-glass latency — this is Δ.** Median, with p90 and sample count |
+| `ttff` | connect → first frame. 4–5s is normal, per the SDK's own bands |
+| `prompt ack` | round trip of the last `setPrompt`. The floor, not the settle time |
+| `since prompt` | counts up from the last switch — **watch this while the portal turns over** |
+| `billed` | generation seconds, straight from the SDK |
+
+`prompt ack` and `since prompt` are there for PRD §7's open question: how long
+Lucy takes to *visibly* settle after a prompt change. The ack says the request
+landed; only your eyes say the pixels changed, so read the second number at the
+moment the new dimension looks right.
+
+Δ comes from the SDK's `stats` event, **not** `onConnectionQuality` — that one is
+debounced to fire only when its verdict changes, so a HUD fed from it sits on a
+stale number indefinitely.
+
+## Still to do in Phase 1
+
+- **Sync.** `syncDelayMs` is in the config and on the panel but **not wired**.
+  Whether it gets built at all depends on the measured Δ — see PRD §2.3, which
+  now expects 300–600ms and treats V1-vs-V2 as an open decision rather than a
+  formality.
+- The canvas is locked to the camera's native resolution (1280×720 requested),
+  which is exactly `lucy-2.5`'s output, so the composite needs no letterboxing.
+  `drawCover` in `renderer.ts` handles the mismatch case anyway.

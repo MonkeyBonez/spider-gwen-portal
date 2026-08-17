@@ -1,5 +1,6 @@
 import './style.css';
 import { App } from './app';
+import { resolveApiKey, storeApiKey } from './lucy';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
@@ -8,21 +9,38 @@ app.innerHTML = `
       <div class="hud">
         <span class="chip" id="hud-dimension">—</span>
         <span class="chip muted" id="hud-counter">0 switches</span>
+        <span class="chip muted hidden" id="hud-lucy">lucy: —</span>
       </div>
       <div class="status hidden" id="status"></div>
       <div class="toast hidden" id="toast"></div>
     </div>
     <div class="start" id="start">
       <h1>Portal</h1>
-      <p>Phase 0 POC — hand tracking, portal polygon, gesture state machine.</p>
+      <p>Hand tracking, portal polygon, gesture state machine — with a live Lucy stream inside the portal.</p>
       <p class="muted">
         Hold both hands up, thumbs touching and index fingers touching, then open
-        and close them. Each close→open cycle switches the dimension colour.
+        and close them. Each close→open cycle switches dimension.
       </p>
-      <button id="start-btn">Enable camera</button>
+
+      <div class="key-row" id="key-row">
+        <label for="key-input">Decart API key</label>
+        <input id="key-input" type="password" autocomplete="off" spellcheck="false"
+               placeholder="paste key — kept in this browser only" />
+        <p class="muted small" id="key-note"></p>
+      </div>
+
+      <div class="button-row">
+        <button id="start-lucy">Start with Lucy</button>
+        <button id="start-camera" class="secondary">Camera only (free)</button>
+      </div>
+      <p class="muted small">
+        The Lucy stream bills per generation-second. Camera-only runs the whole
+        gesture pipeline with a flat colour in the portal and costs nothing.
+      </p>
+
       <p class="keys muted">
       D debug panel · L landmarks · Space manual switch · R reset counters<br />
-      1–4 pick the switch transition · T flips the timing
+      1–4 pick the switch transition · T flips the timing · C connect/disconnect Lucy
     </p>
       <p class="error hidden" id="error"></p>
     </div>
@@ -30,37 +48,83 @@ app.innerHTML = `
 `;
 
 const startScreen = document.querySelector<HTMLElement>('#start')!;
-const startBtn = document.querySelector<HTMLButtonElement>('#start-btn')!;
+const lucyBtn = document.querySelector<HTMLButtonElement>('#start-lucy')!;
+const cameraBtn = document.querySelector<HTMLButtonElement>('#start-camera')!;
 const errorEl = document.querySelector<HTMLElement>('#error')!;
+const keyInput = document.querySelector<HTMLInputElement>('#key-input')!;
+const keyNote = document.querySelector<HTMLElement>('#key-note')!;
 
-startBtn.addEventListener('click', async () => {
-  startBtn.disabled = true;
-  startBtn.textContent = 'Starting…';
+// A key in .env.local wins, and there is then nothing to type. Showing the
+// field anyway would invite pasting a second key that silently loses.
+const existing = resolveApiKey();
+if (existing.source === 'env') {
+  keyInput.remove();
+  keyNote.textContent = 'Using VITE_DECART_API_KEY from portal/.env.local.';
+} else {
+  if (existing.source === 'stored') keyInput.value = existing.key;
+  keyNote.textContent =
+    'Stored in this browser only (localStorage). Never sent anywhere except Decart.';
+}
+
+let instance: App | null = null;
+
+async function launch(useLucy: boolean): Promise<void> {
+  lucyBtn.disabled = true;
+  cameraBtn.disabled = true;
   errorEl.classList.add('hidden');
 
-  const instance = new App(document.querySelector<HTMLElement>('#stage-wrap')!, {
-    status: document.querySelector<HTMLElement>('#status')!,
-    dimension: document.querySelector<HTMLElement>('#hud-dimension')!,
-    counter: document.querySelector<HTMLElement>('#hud-counter')!,
-    toast: document.querySelector<HTMLElement>('#toast')!,
-  });
+  if (useLucy && existing.source !== 'env') storeApiKey(keyInput.value);
+
+  instance = new App(
+    document.querySelector<HTMLElement>('#stage-wrap')!,
+    {
+      status: document.querySelector<HTMLElement>('#status')!,
+      dimension: document.querySelector<HTMLElement>('#hud-dimension')!,
+      counter: document.querySelector<HTMLElement>('#hud-counter')!,
+      toast: document.querySelector<HTMLElement>('#toast')!,
+      lucy: document.querySelector<HTMLElement>('#hud-lucy')!,
+    },
+    { useLucy },
+  );
 
   try {
     await instance.start();
     startScreen.classList.add('hidden');
   } catch (err) {
     instance.stop();
-    startBtn.disabled = false;
-    startBtn.textContent = 'Enable camera';
+    instance = null;
+    lucyBtn.disabled = false;
+    cameraBtn.disabled = false;
     errorEl.textContent = err instanceof Error ? err.message : String(err);
     errorEl.classList.remove('hidden');
     console.error(err);
   }
+}
+
+lucyBtn.addEventListener('click', () => {
+  if (existing.source !== 'env' && !keyInput.value.trim()) {
+    errorEl.textContent = 'Paste a Decart API key, or start camera-only.';
+    errorEl.classList.remove('hidden');
+    keyInput.focus();
+    return;
+  }
+  lucyBtn.textContent = 'Starting…';
+  void launch(true);
 });
+
+cameraBtn.addEventListener('click', () => {
+  cameraBtn.textContent = 'Starting…';
+  void launch(false);
+});
+
+// A closed tab must not leave a paid stream running. `pagehide` fires in cases
+// `beforeunload` misses (bfcache, mobile), and disconnect is idempotent.
+window.addEventListener('pagehide', () => instance?.stop());
 
 if (!navigator.mediaDevices?.getUserMedia) {
   errorEl.textContent =
     'This browser has no camera API. Use a recent Chrome/Safari over https or localhost.';
   errorEl.classList.remove('hidden');
-  startBtn.disabled = true;
+  lucyBtn.disabled = true;
+  cameraBtn.disabled = true;
 }
