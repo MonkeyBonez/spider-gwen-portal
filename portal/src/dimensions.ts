@@ -60,13 +60,37 @@ export const DIMENSIONS: Dimension[] = [
       'Comic-book animated superhero in a red-and-blue spider suit, halftone shading, bold ink outlines',
   },
   {
-    // Names the subject and adds multiverse framing, with a background clause
-    // but still no rendering instruction — so the look has to come from the
-    // scene description alone.
+    /*
+     * Rewritten 2026-08-17: Sne reported it often failed to put him in the suit
+     * at all. Was:
+     *
+     *   Subject is a Superhero in a red-and-blue spider suit in other part of
+     *   multiverse - background is high tech
+     *
+     * Three changes, each aimed at that failure:
+     *
+     * - **Dropped "Subject is a".** That is meta-language about the *input* —
+     *   a statement about who the person is. The model is transforming a frame,
+     *   and grounds better on a noun phrase describing what the frame should
+     *   become. Note the prompt that never fails (`style+subject`) opens
+     *   straight into the description.
+     * - **Dropped "in other part of multiverse".** Nothing to render: it is an
+     *   abstraction, and it was sitting between the costume and the background,
+     *   costing attention and returning no pixels.
+     * - **Named the rendering technique.** This is the likeliest cause of the
+     *   *intermittency*. `style+subject` pins its look with "halftone shading,
+     *   bold ink outlines"; this one pinned nothing, so each pass drifted
+     *   wherever the model went. It came back photoreal by accident, so that is
+     *   now asked for deliberately — the contrast with the comic dimensions is
+     *   worth keeping, but it should be reliable rather than lucky.
+     *
+     * The costume clause also moves to the front, where it is in the prompt
+     * that works.
+     */
     name: 'multiverse',
     color: '#2f7bff',
     prompt:
-      'Subject is a Superhero in a red-and-blue spider suit in other part of multiverse - background is high tech',
+      'A superhero in a red-and-blue spider suit, high-tech neon-lit environment, cinematic 3D render, sharp detail',
   },
   {
     // The only one asking for a mask rather than a suit, and the only one
