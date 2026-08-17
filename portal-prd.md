@@ -271,8 +271,16 @@ either reopens *behind still-closed hands* — the portal blooms into a dimensio
 viewer can't see yet — or lags a fast cycle. Under `gestural` the portal is shut for
 exactly the span the performer holds it shut, and the bloom into the next dimension is
 the reveal, synchronised to the hands opening by construction. `holdMs` becomes dead
-weight; the only safety is `maxHoldMs`, which reopens anyway if the hands leave frame
-while shut. `timed` stays selectable as the control.
+weight. `timed` stays selectable as the control.
+
+**The hold has no time limit, deliberately.** An early build capped it at 2s via
+`maxHoldMs`, which reopened the portal while the hands were still visibly closed —
+holding the gesture is a performance choice, not a fault, and a clock cannot tell the
+two apart. That cap now defaults to **off**. The failure it was meant to catch is
+*losing* the hands, so that is what triggers the bail-out now: when tracking drops for
+`lostResetMs` the state machine falls to IDLE and the app releases the portal on that
+signal. Rule of thumb for anything similar: bail out on the actual failure condition,
+never on elapsed time that a legitimate performance can also reach.
 
 Note what this does to §7's open question about Lucy's settle time: under `gestural`
 the hold is however long the performer holds, so a slow `setPrompt` is absorbed by the

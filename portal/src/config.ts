@@ -84,7 +84,13 @@ export interface Config {
    * `gestural` ignores this and holds until the hands part.
    */
   holdMs: number;
-  /** `gestural` only — reopen anyway after this long, if the hands never part. */
+  /**
+   * `gestural` only — last-resort escape hatch: reopen after this long no matter
+   * what. **Default 0 (off).** The real protection against a portal stuck shut is
+   * tracking loss, which the app handles directly — a timer here would also fire
+   * while the hands are perfectly visible and deliberately held closed, which is
+   * a performance, not a fault.
+   */
   maxHoldMs: number;
   reopenMs: number;
   /** Back-easing strength on the reopen. 0 = plain ease-out. */
@@ -135,7 +141,7 @@ export const DEFAULT_CONFIG: Config = {
   transitionTiming: 'gestural',
   collapseMs: 110,
   holdMs: 90,
-  maxHoldMs: 2000,
+  maxHoldMs: 0,
   reopenMs: 240,
   reopenOvershoot: 1.1,
   twistDegrees: 90,
@@ -150,6 +156,9 @@ export const DEFAULT_CONFIG: Config = {
 // Bumped from v1: `all` contact mode is on a different scale, so a persisted v1
 // close/open threshold would be badly wrong rather than merely stale.
 const STORAGE_KEY = 'portal.config.v2';
+
+/** The old `maxHoldMs` default, superseded. See the migration in `loadConfig`. */
+const LEGACY_MAX_HOLD_MS = 2000;
 
 export function loadConfig(): Config {
   const cfg = { ...DEFAULT_CONFIG };
@@ -170,6 +179,12 @@ export function loadConfig(): Config {
   if (!TRANSITION_TIMINGS.includes(cfg.transitionTiming)) {
     cfg.transitionTiming = DEFAULT_CONFIG.transitionTiming;
   }
+  // Migration: `maxHoldMs` used to default to 2000, which reopened the portal on
+  // a timer even while the hands were visibly still shut. Nobody ever chose that
+  // number — it was only ever the default — so treat a stored 2000 as unset.
+  // Done here rather than by bumping the storage key, which would also discard
+  // hard-won threshold tuning.
+  if (cfg.maxHoldMs === LEGACY_MAX_HOLD_MS) cfg.maxHoldMs = DEFAULT_CONFIG.maxHoldMs;
   // A bias outside [0,1] would extrapolate past the max and make `gap` nonsense.
   if (!Number.isFinite(cfg.worstSideBias)) cfg.worstSideBias = DEFAULT_CONFIG.worstSideBias;
   cfg.worstSideBias = Math.min(1, Math.max(0, cfg.worstSideBias));

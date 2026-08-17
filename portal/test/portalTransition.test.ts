@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG } from '../src/config';
+import { DEFAULT_CONFIG, loadConfig } from '../src/config';
 import {
   GesturalTransition,
   PortalTransition,
@@ -263,11 +263,21 @@ describe('GesturalTransition (PRD §4.1)', () => {
     expect(states.filter((s) => s.swap)).toHaveLength(1);
   });
 
-  it('reopens itself if the release never arrives', () => {
+  it('reopens itself if the release never arrives, when a cap is set', () => {
+    const spec = { ...SPEC, maxHoldMs: 2000 };
     const g = new GesturalTransition();
     g.collapse(0);
-    const states = run(g, 0, SPEC.maxHoldMs + SPEC.reopenMs + 200);
+    const states = run(g, 0, spec.maxHoldMs + spec.reopenMs + 200, spec);
     expect(states.at(-1)!.phase).toBe('idle');
+  });
+
+  it('has that cap off by default, so a held-shut portal never self-opens', () => {
+    // Holding the gesture closed is a performance choice, not a fault — a timer
+    // here would reopen the portal with the hands still visibly together.
+    expect(DEFAULT_CONFIG.maxHoldMs).toBe(0);
+    const g = new GesturalTransition();
+    g.collapse(0);
+    expect(run(g, 0, 30_000, SPEC).at(-1)!.phase).toBe('hold');
   });
 
   it('a release with nothing collapsed is ignored', () => {
@@ -303,5 +313,43 @@ describe('GesturalTransition (PRD §4.1)', () => {
     expect(shut.swap).toBe(true);
     g.release(100);
     expect(g.update(100, spec).phase).toBe('idle');
+  });
+});
+
+describe('maxHoldMs migration', () => {
+  // vitest runs in node, which has no localStorage. Minimal stub — `loadConfig`
+  // only ever calls getItem, and the tests clear between cases.
+  const store = new Map<string, string>();
+  globalThis.localStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+    clear: () => store.clear(),
+    key: (i: number) => [...store.keys()][i] ?? null,
+    get length() {
+      return store.size;
+    },
+  } as Storage;
+
+  it('treats a persisted legacy 2000 as unset', () => {
+    // The old default reopened the portal on a timer with the hands still shut.
+    localStorage.setItem(
+      'portal.config.v2',
+      JSON.stringify({ ...DEFAULT_CONFIG, maxHoldMs: 2000, closeThreshold: 0.42 }),
+    );
+    const cfg = loadConfig();
+    expect(cfg.maxHoldMs).toBe(0);
+    // …without discarding anything actually tuned.
+    expect(cfg.closeThreshold).toBe(0.42);
+    localStorage.clear();
+  });
+
+  it('keeps a deliberately chosen cap', () => {
+    localStorage.setItem(
+      'portal.config.v2',
+      JSON.stringify({ ...DEFAULT_CONFIG, maxHoldMs: 5000 }),
+    );
+    expect(loadConfig().maxHoldMs).toBe(5000);
+    localStorage.clear();
   });
 });

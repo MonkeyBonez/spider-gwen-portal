@@ -61,6 +61,8 @@ export class App {
 
   private dimensionIndex = 0;
   private switches = 0;
+  /** When the current gestural hold began, for the debug readout. */
+  private holdStartedAt = 0;
   private running = false;
   private toastTimer = 0;
 
@@ -165,6 +167,14 @@ export class App {
     if (gestural) {
       if (result.advance) this.gesturalTransition.collapse(t);
       if (result.release) this.gesturalTransition.release(t);
+      // The portal stays shut for as long as the hands do — deliberately with no
+      // time limit, because holding it closed is a performance choice. The only
+      // thing that must force it open is *losing* the hands: the trigger drops to
+      // IDLE after `lostResetMs`, and without this the portal would stay
+      // collapsed on screen with nothing left to reopen it.
+      else if (this.gesturalTransition.holding && result.state === 'IDLE') {
+        this.gesturalTransition.release(t);
+      }
     } else if (result.advance) {
       this.transition.trigger(t);
     }
@@ -186,6 +196,7 @@ export class App {
       // Phase 1 swaps this for `realtimeClient.setPrompt(nextDimension.prompt)`.
       this.dimensionIndex = (this.dimensionIndex + 1) % DIMENSIONS.length;
       this.switches++;
+      this.holdStartedAt = t;
     }
 
     // Fade rather than pop when a hand drops out (PRD §2.1).
@@ -244,8 +255,15 @@ export class App {
               return `${s.a.toFixed(2)} / ${s.b.toFixed(2)}`;
             })()
           : '—',
-        transition: transition.phase,
+        // Timing shown next to the phase: a portal reopening on its own is
+        // either `timed` (a clock) or `gestural` + a `maxHoldMs` cap, and this
+        // is what tells the two apart at a glance.
+        transition: `${transition.phase} (${this.cfg.transitionTiming})`,
         closure: transition.closure.toFixed(2),
+        held:
+          transition.phase === 'hold'
+            ? `${((t - this.holdStartedAt) / 1000).toFixed(1)}s${this.cfg.maxHoldMs > 0 ? ` / ${(this.cfg.maxHoldMs / 1000).toFixed(1)}s cap` : ''}`
+            : '—',
       },
     });
 

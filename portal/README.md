@@ -151,9 +151,14 @@ selectable as controls.
 when the four points come together and **stays shut for as long as they stay
 together**, then reopens once they have moved apart past `releaseThreshold`. A fixed
 hold can't know what the hands are doing, so it either blooms behind still-closed
-hands or lags a fast cycle; this can't. `holdMs` applies to `timed` only — under
-`gestural` the only timer is `maxHoldMs`, a safety valve for hands leaving the frame
-while shut.
+hands or lags a fast cycle; this can't. `holdMs` applies to `timed` only.
+
+**The hold is untimed.** Keep your hands together and the portal stays shut for as
+long as you like. If it reopens on its own while your fingers haven't moved, something
+is running on a clock — check the `transition` readout, which names the active timing,
+and `held`, which shows how long the hold has run and whether a cap is set. The
+`maxHoldMs` cap defaults to **off**; the real bail-out is *losing* the hands, which the
+app detects directly and releases on.
 
 **Three thresholds, easy to confuse:**
 

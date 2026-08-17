@@ -36,7 +36,7 @@ const spec: TransitionSpec = {
   kind: 'iris',
   collapseMs: 110,
   holdMs: 90,
-  maxHoldMs: 2000,
+  maxHoldMs: 0,
   reopenMs: 240,
   overshoot: 1.1,
   twistDegrees: 90,
