@@ -77,6 +77,10 @@ export class App {
 
   private lucy: LucySession | null = null;
   private wantLucy: boolean;
+  /** Next time to sample our own render rate into the session log. */
+  private nextPerfLogAt = 0;
+  /** Rolling max of `detectForVideo` cost, reset each time it is logged. */
+  private detectMsPeak = 0;
   /** Last time hands were seen, for the idle-disconnect cost guard. */
   private lastHandsAt = 0;
 
@@ -169,6 +173,7 @@ export class App {
       // Connect straight into the current dimension rather than dimension #1,
       // so reconnecting mid-session doesn't silently rewind the universe.
       initialPrompt: DIMENSIONS[this.dimensionIndex].prompt,
+      codec: this.cfg.lucyCodec,
       onPhase: (phase, detail) => this.setLucyChip(detail, phase),
     });
     this.lucy = session;
@@ -279,6 +284,28 @@ export class App {
         DIMENSIONS[this.dimensionIndex].prompt,
         DIMENSIONS[this.dimensionIndex].name,
       );
+    }
+
+    // Our own render rate, once a second, on the same clock as the SDK's stats.
+    //
+    // This is not vanity instrumentation. The camera track we hand Lucy is
+    // captured by the same page that runs MediaPipe and the compositor, so if
+    // this loop is starved the *encoder gets fed fewer frames* — which shows up
+    // in the SDK's stats as a low outbound fps with no quality-limitation
+    // reason, i.e. looking like a network problem when it is ours. Without this
+    // row the two are indistinguishable in the log.
+    this.detectMsPeak = Math.max(this.detectMsPeak, hands.detectMs);
+    if (t >= this.nextPerfLogAt) {
+      sessionLog.log('perf', {
+        fps: Number(this.fps.toFixed(1)),
+        detectMs: Number(hands.detectMs.toFixed(1)),
+        detectPeakMs: Number(this.detectMsPeak.toFixed(1)),
+        hands: hands.rawHands.length,
+        canvas: `${this.renderer.canvas.width}×${this.renderer.canvas.height}`,
+        hidden: document.visibilityState === 'hidden',
+      });
+      this.detectMsPeak = 0;
+      this.nextPerfLogAt = t + 1000;
     }
 
     // Cost guard: an unattended session bills by the second (§Phase 2).

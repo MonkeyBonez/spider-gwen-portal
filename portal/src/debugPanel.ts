@@ -6,6 +6,7 @@
 
 import { resetConfig, saveConfig, type Config } from './config';
 import { sessionLog } from './sessionLog';
+import { LUCY_CODEC_BLURBS, LUCY_CODECS } from './lucyCodec';
 import { CONTACT_BLURBS, CONTACT_MODES } from './geometry';
 import {
   TIMING_BLURBS,
@@ -141,6 +142,8 @@ export class DebugPanel {
       this.select('contactMode', 'Contact mode', CONTACT_MODES, CONTACT_BLURBS),
       this.select('transitionKind', 'Switch transition', TRANSITION_KINDS, TRANSITION_BLURBS),
       this.select('transitionTiming', 'Transition timing', TRANSITION_TIMINGS, TIMING_BLURBS),
+      // Applies on the next connect, not live — reconnect with C twice.
+      this.select('lucyCodec', 'Lucy codec (on reconnect)', LUCY_CODECS, LUCY_CODEC_BLURBS),
     );
 
     for (const spec of SLIDERS) this.el.append(this.slider(spec));

@@ -19,6 +19,7 @@
 
 import type { RealTimeClient, WebRTCStats } from '@decartai/sdk';
 import { sessionLog } from './sessionLog';
+import type { LucyCodec } from './lucyCodec';
 
 /**
  * `lucy-2.5` is 1280×720 @30fps, which is exactly our canonical canvas (PRD
@@ -119,6 +120,8 @@ export interface LucyOptions {
   apiKey: string;
   /** Prompt for dimension #1, set at connect so the first frames are never wrong. */
   initialPrompt: string;
+  /** Publish codec — decides whether the SDK enables simulcast. See `config.lucyCodec`. */
+  codec: LucyCodec;
   onPhase?: (phase: LucyPhase, detail: string) => void;
 }
 
@@ -222,6 +225,7 @@ export class LucySession {
         // already `false`; stated explicitly so a future edit has to be deliberate.
         mirror: false,
         resolution: '720p',
+        preferredVideoCodec: this.opts.codec,
         // `enhance` lets the server rewrite the prompt. Off: we are cycling a
         // fixed library where each dimension has to look the same every time it
         // comes round, and an enhanced rewrite would drift between visits.
@@ -305,6 +309,7 @@ export class LucySession {
 
     sessionLog.log('lucy:connected', {
       model: MODEL_NAME,
+      codec: this.opts.codec,
       connectMs: Math.round(performance.now() - startedAt),
       sessionId: this.client.sessionId,
     });

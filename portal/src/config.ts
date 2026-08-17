@@ -1,4 +1,5 @@
 import { CONTACT_MODES, DEFAULT_WORST_SIDE_BIAS, type ContactMode } from './geometry';
+import { LUCY_CODECS, type LucyCodec } from './lucyCodec';
 import {
   TRANSITION_KINDS,
   TRANSITION_TIMINGS,
@@ -104,6 +105,22 @@ export interface Config {
 
   // --- Lucy session (Phase 1, §3) ------------------------------------------
   /**
+   * Codec we ask the SDK to publish with. **Takes effect on the next connect**
+   * (press `C` twice), not live.
+   *
+   * This is a latency knob, not a quality one. The SDK sets
+   * `simulcast: codec !== 'vp9'`, so **`h264` publishes three simulcast layers**
+   * — and the 2026-08-16 log shows Chrome then encoding all three in *software*
+   * (`SimulcastEncoderAdapter (OpenH264 ×3)`) instead of using the Mac's
+   * hardware encoder. Selecting `vp9` is the only way through the SDK's API to
+   * get a single layer. Worth A/B-ing against the h264 baseline; vp9 software
+   * encode has its own cost, so this is a measurement, not an obvious win.
+   *
+   * There is exactly one subscriber (the inference server), so simulcast is
+   * paying for adaptation nobody uses. Worth raising with Decart.
+   */
+  lucyCodec: LucyCodec;
+  /**
    * Disconnect Lucy after this long with no hands detected. The stream bills
    * per generation-second, so an unattended session is money burning — but a
    * reconnect costs a 4–5s cold start (§2.3.1), so this trades one against the
@@ -158,6 +175,7 @@ export const DEFAULT_CONFIG: Config = {
   syncDelayMs: 0,
 
   idleDisconnectMs: 60_000,
+  lucyCodec: 'h264',
 
   showLandmarks: false,
   showPolygonOutline: true,
@@ -189,6 +207,9 @@ export function loadConfig(): Config {
   }
   if (!TRANSITION_TIMINGS.includes(cfg.transitionTiming)) {
     cfg.transitionTiming = DEFAULT_CONFIG.transitionTiming;
+  }
+  if (!LUCY_CODECS.includes(cfg.lucyCodec)) {
+    cfg.lucyCodec = DEFAULT_CONFIG.lucyCodec;
   }
   // Migration: `maxHoldMs` used to default to 2000, which reopened the portal on
   // a timer even while the hands were visibly still shut. Nobody ever chose that
