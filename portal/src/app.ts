@@ -85,6 +85,10 @@ export class App {
   private detectMsPeak = 0;
   /** Last time hands were seen, for the idle-disconnect cost guard. */
   private lastHandsAt = 0;
+  /** Dimension index already requested from Lucy, to avoid a duplicate send. */
+  private promptRequestedFor = -1;
+  /** When that request went out — the head start the swap gets, in the log. */
+  private promptRequestedAt = 0;
 
   private hud: Hud;
 
@@ -240,6 +244,17 @@ export class App {
     // when the portal is fully shut, so the swap is never seen mid-flight (§4.1).
     // Under `gestural` the two halves are driven separately: the close collapses
     // it, and the hands parting is what reopens it.
+    // Send the prompt the moment the close is *detected*, not when the collapse
+    // animation finishes — Lucy needs every millisecond of head start it can
+    // get (~2.2s from request to visible change, measured 2026-08-16), and the
+    // animation is 110ms of pure waiting we were spending for nothing.
+    //
+    // Safe to move here because this is the same debounced, cooldown-guarded
+    // event that starts the collapse; it is not an earlier *guess* that the
+    // close is coming. The visible dimension — colour, HUD — still changes at
+    // zero closure below, so nothing on screen moves ahead of the animation.
+    if (result.advance) this.requestNextDimension(t);
+
     const gestural = this.cfg.transitionTiming === 'gestural';
     if (gestural) {
       if (result.advance) this.gesturalTransition.collapse(t);
@@ -277,15 +292,14 @@ export class App {
         n: this.switches,
         dimension: DIMENSIONS[this.dimensionIndex].name,
         gap: Number(gap.toFixed(3)),
+        // How far ahead of the visible swap the prompt went out. Small next to
+        // the ~2.2s it takes to land, but it is free and it is measurable.
+        headStartMs: this.promptRequestedAt > 0 ? Math.round(t - this.promptRequestedAt) : 0,
       });
-      // Fired at zero closure, so the portal is fully shut while Lucy settles
-      // into the new prompt — which is the whole reason the swap happens here
-      // rather than on the trigger (§4.1). Not awaited: blocking the render
-      // loop on a network ack would stall the collapse animation itself.
-      void this.lucy?.setPrompt(
-        DIMENSIONS[this.dimensionIndex].prompt,
-        DIMENSIONS[this.dimensionIndex].name,
-      );
+      // Normally already sent on `advance`, above. This is the fallback for the
+      // paths that reach a swap without one — a manual `Space` play, or `1`–`4`
+      // playing a transition to preview it.
+      this.requestNextDimension(t);
     }
 
     // Our own render rate, once a second, on the same clock as the SDK's stats.
@@ -537,6 +551,26 @@ export class App {
       // Play it immediately so the variant can be judged the moment it is picked.
       this.playTransition();
     }
+  }
+
+  /**
+   * Ask Lucy for the dimension the portal is *about* to show.
+   *
+   * Idempotent per target dimension: `advance` fires once per close, but the
+   * swap fallback would otherwise re-send the same prompt a fraction of a
+   * second later, and a duplicate `setPrompt` mid-restyle risks restarting it.
+   *
+   * Note this deliberately runs one step ahead of `dimensionIndex`, which only
+   * moves at zero closure. The request is in flight while the portal collapses.
+   */
+  private requestNextDimension(t: number): void {
+    const next = (this.dimensionIndex + 1) % DIMENSIONS.length;
+    if (this.promptRequestedFor === next) return;
+    this.promptRequestedFor = next;
+    this.promptRequestedAt = t;
+    // Not awaited: blocking the render loop on a network ack would stall the
+    // collapse animation, and the ack has been seen to take 1.9s.
+    void this.lucy?.setPrompt(DIMENSIONS[next].prompt, DIMENSIONS[next].name);
   }
 
   /** Manual play. Under `gestural` this toggles the two halves. */
