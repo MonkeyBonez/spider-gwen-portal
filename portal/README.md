@@ -74,6 +74,7 @@ HTTP, so it needs a tunnel (`ngrok http 5173`) or an HTTPS dev server.
 | `src/handTracking.ts` | MediaPipe Tasks `HandLandmarker`, VIDEO mode, 2 hands, GPU |
 | `src/lucy.ts` | Decart realtime session — connect, `setPrompt`, Δ/billing stats |
 | `src/sessionLog.ts` | NDJSON recording of every SDK stat and event, for latency work |
+| `src/recorder.ts` | records the camera and Lucy streams raw, for offline analysis |
 | `src/geometry.ts` | portal polygon, normalised `gap`/`area`, EMA smoothing |
 | `src/triggers/types.ts` | `GestureTrigger` interface — swap in alternative strategies |
 | `src/triggers/closeOpenTrigger.ts` | trigger v1, the PRD §2.2 state machine |
@@ -292,6 +293,34 @@ jq -r 'select(.kind=="stats") | [.t, .data.glassToGlass.medianMs] | @tsv' portal
 
 The API key is never written to it — `scrub()` drops credential-shaped fields
 before anything reaches the buffer, so these files are safe to share.
+
+### Raw stream recordings
+
+With a Lucy session connected, `npm run dev` also writes the two video streams
+to `portal/logs/`:
+
+```
+portal-<session>-camera.webm    what the camera saw
+portal-<session>-lucy.webm      what Lucy sent back
+```
+
+**Both raw and separate, never the composite** — the offset between them is the
+thing worth measuring, and compositing them destroys it. Chunks upload every 2s,
+so a crashed tab still leaves a playable file. Roughly 1–2MB/s per stream;
+`Record raw streams` in the panel turns it off.
+
+**Remux before analysing.** MediaRecorder writes streaming WebM with no
+duration in the header, so players cannot seek it:
+
+```bash
+ffmpeg -i portal-<session>-lucy.webm -c copy lucy-fixed.webm
+```
+
+To line the two files up: both recorders start within a frame of each other and
+log their start times, so start + frame number gets you close. For a real
+measurement, use an event visible in both — a dimension switch is timestamped in
+the log and appears in the Lucy recording as a hard step in image content, so
+pairing them measures true end-to-end delay without trusting either clock.
 
 ## Still to do in Phase 1
 

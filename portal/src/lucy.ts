@@ -132,6 +132,9 @@ export class LucySession {
   private client: RealTimeClient | null = null;
   private opts: LucyOptions;
 
+  /** The transformed stream as delivered, for recording. Null until connected. */
+  private remote: MediaStream | null = null;
+
   private currentPhase: LucyPhase = 'idle';
   private lastError = '';
   private firstFrameAt = 0;
@@ -187,6 +190,11 @@ export class LucySession {
    * back to a flat dimension colour on null, which is what covers the ~4–5s
    * cold start without a hole in the composite.
    */
+  /** Lucy's stream itself, for the recorder. */
+  get remoteStream(): MediaStream | null {
+    return this.remote;
+  }
+
   get frame(): HTMLVideoElement | null {
     const v = this.videoEl;
     return v.readyState >= 2 && v.videoWidth > 0 ? v : null;
@@ -234,6 +242,7 @@ export class LucySession {
         // comes round, and an enhanced rewrite would drift between visits.
         initialState: { prompt: { text: this.opts.initialPrompt, enhance: false } },
         onRemoteStream: (remote) => {
+          this.remote = remote;
           this.videoEl.srcObject = remote;
           void this.videoEl.play().catch(() => {
             /* autoplay of a muted stream should not fail, and a failure here
@@ -379,6 +388,7 @@ export class LucySession {
     this.settle.stop();
     this.client?.disconnect();
     this.client = null;
+    this.remote = null;
     this.videoEl.srcObject = null;
     this.firstFrameAt = 0;
     this.currentStats = { ...this.currentStats, queue: null };

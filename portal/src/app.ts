@@ -29,6 +29,7 @@ import type { GestureTrigger } from './triggers/types';
 import { LucySession, resolveApiKey } from './lucy';
 import { sessionLog } from './sessionLog';
 import { DelayBuffer } from './delayBuffer';
+import { StreamRecorder } from './recorder';
 
 const PORTAL_FADE_MS = 120;
 /** EMA on d(gap)/dt — the raw derivative is far too noisy to threshold on. */
@@ -89,6 +90,13 @@ export class App {
   private promptRequestedFor = -1;
   /** When that request went out — the head start the swap gets, in the log. */
   private promptRequestedAt = 0;
+  /**
+   * Raw stream recordings for offline analysis. The endpoint only exists on the
+   * dev server, so outside `npm run dev` these stay inert rather than buffering
+   * video nobody can write.
+   */
+  private camRecorder: StreamRecorder | null = null;
+  private lucyRecorder: StreamRecorder | null = null;
 
   private hud: Hud;
 
@@ -157,6 +165,7 @@ export class App {
 
   stop(): void {
     this.running = false;
+    this.stopRecording();
     this.lucy?.disconnect();
     this.lucy = null;
     this.stream?.getTracks().forEach((t) => t.stop());
@@ -187,6 +196,7 @@ export class App {
 
     try {
       await session.connect(this.stream);
+      this.startRecording();
     } catch (err) {
       this.lucy = null;
       const msg = err instanceof Error ? err.message : String(err);
@@ -198,6 +208,7 @@ export class App {
 
   disconnectLucy(reason = 'disconnected'): void {
     if (!this.lucy) return;
+    this.stopRecording();
     this.lucy.disconnect();
     this.lucy = null;
     this.setLucyChip(reason, 'idle');
@@ -488,6 +499,11 @@ export class App {
       'since prompt': since != null ? `${(since / 1000).toFixed(1)}s` : '—',
       billed: `${s.secondsUsed.toFixed(0)}s`,
       log: `${sessionLog.size} entries`,
+      rec: this.camRecorder?.active
+        ? `cam ${mb(this.camRecorder.bytesWritten)} · lucy ${mb(this.lucyRecorder?.bytesWritten ?? 0)}`
+        : this.cfg.recordStreams
+          ? 'idle'
+          : 'off',
       // Whether compensation is actually delivering the delay it was asked
       // for. A capacity below the request means the ring ran out of frames at
       // this frame rate, and the composite is under-delayed rather than
@@ -567,6 +583,34 @@ export class App {
       // Play it immediately so the variant can be judged the moment it is picked.
       this.playTransition();
     }
+  }
+
+  /**
+   * Record the camera and Lucy streams to disk, in parallel and unmixed.
+   *
+   * Both start together so the two files cover the same window, which is what
+   * makes the offset between them measurable — that offset *is* the thing
+   * under investigation, so compositing them first would erase the evidence.
+   */
+  private startRecording(): void {
+    if (!this.cfg.recordStreams || !this.stream || !this.lucy) return;
+    // Dev-server only: `/__rec` does not exist in a build, and buffering video
+    // with nowhere to send it would just leak memory.
+    const endpoint = import.meta.env.DEV ? '/__rec' : null;
+    if (!endpoint) return;
+    const remote = this.lucy.remoteStream;
+    if (!remote) return;
+    this.camRecorder = new StreamRecorder('camera', sessionLog.sessionId, endpoint);
+    this.lucyRecorder = new StreamRecorder('lucy', sessionLog.sessionId, endpoint);
+    this.camRecorder.start(this.stream);
+    this.lucyRecorder.start(remote);
+  }
+
+  private stopRecording(): void {
+    this.camRecorder?.stop();
+    this.lucyRecorder?.stop();
+    this.camRecorder = null;
+    this.lucyRecorder = null;
   }
 
   /**
@@ -657,6 +701,10 @@ export class App {
     this.hud.status.textContent = text;
     this.hud.status.classList.toggle('hidden', !text);
   }
+}
+
+function mb(bytes: number): string {
+  return `${(bytes / 1e6).toFixed(1)}MB`;
 }
 
 function fmtMs(v: number | null): string {

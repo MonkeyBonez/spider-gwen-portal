@@ -165,6 +165,16 @@ export interface Config {
    * other rather than being as aggressive as it could be. 0 disables it.
    */
   idleDisconnectMs: number;
+  /**
+   * Record the camera and Lucy streams to `portal/logs/*.webm` for offline
+   * analysis (dev server only — there is nowhere to write them otherwise).
+   *
+   * Both are recorded **raw and separately**, never the composite: the whole
+   * point is to be able to measure the offset between them, which compositing
+   * destroys. Roughly 1–2MB per second per stream, so it is a debugging tool,
+   * not something to leave on.
+   */
+  recordStreams: boolean;
 
   // --- debug ----------------------------------------------------------------
   showLandmarks: boolean;
@@ -213,6 +223,7 @@ export const DEFAULT_CONFIG: Config = {
   syncDelayMs: 0,
 
   idleDisconnectMs: 60_000,
+  recordStreams: true,
   lucyCodec: 'vp9',
 
   // Hold + fade = 1.0s, from the `prompt:settle` curves on 2026-08-16: five

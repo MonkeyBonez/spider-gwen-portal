@@ -62,8 +62,58 @@ function sessionLogPlugin(): Plugin {
   };
 }
 
+/**
+ * Receives the raw camera and Lucy recordings and appends them to
+ * `portal/logs/*.webm` (see recorder.ts).
+ *
+ * Binary and append-only, for the same reason the log streams: chunks arrive
+ * every couple of seconds and a crashed tab should still leave a playable file
+ * behind. Serve-only, like the log endpoint.
+ */
+function streamRecordingPlugin(): Plugin {
+  return {
+    name: 'portal-stream-recording',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/__rec', (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end();
+          return;
+        }
+        const url = new URL(req.url ?? '/', 'http://localhost');
+        const session = url.searchParams.get('session') ?? '';
+        const name = url.searchParams.get('name') ?? '';
+        // Both halves land in a filename, so neither may contain a path.
+        if (!/^[A-Za-z0-9-]{1,80}$/.test(session) || !/^[A-Za-z0-9-]{1,32}$/.test(name)) {
+          res.statusCode = 400;
+          res.end('bad session or name');
+          return;
+        }
+        const chunks: Buffer[] = [];
+        req.on('data', (c: Buffer) => chunks.push(c));
+        req.on('end', () => {
+          try {
+            mkdirSync(LOG_DIR, { recursive: true });
+            appendFileSync(
+              resolve(LOG_DIR, `portal-${session}-${name}.webm`),
+              Buffer.concat(chunks),
+            );
+            res.statusCode = 204;
+            res.end();
+          } catch (err) {
+            server.config.logger.warn(`[stream-recording] ${String(err)}`);
+            res.statusCode = 500;
+            res.end();
+          }
+        });
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [sessionLogPlugin()],
+  plugins: [sessionLogPlugin(), streamRecordingPlugin()],
   build: {
     rollupOptions: {
       input: {

@@ -1,0 +1,125 @@
+/**
+ * Records the camera and Lucy streams side by side, for offline analysis.
+ *
+ * The point is to be able to answer questions after the fact that no live
+ * readout can: how far behind the output actually is on a given motion, what a
+ * prompt change looks like frame by frame, whether a stall was the model or the
+ * network. The session log says *what the numbers were*; these say *what it
+ * looked like*, and the two share a clock.
+ *
+ * **Both streams are recorded raw, not the composite.** The composite would mix
+ * them and destroy exactly the offset we want to measure. (Recording the
+ * composite is a separate thing — that is the Phase 1.5 export.)
+ *
+ * Chunks are uploaded to the dev server as they are produced rather than held
+ * and written at the end, for the same reason the session log streams: a tab
+ * that crashes or is closed mid-take still leaves its evidence. WebM tolerates
+ * this — the first chunk carries the headers and the rest are clusters, so the
+ * appended file plays.
+ *
+ * ## Aligning the two files
+ *
+ * Both recorders start within a frame of each other and their start times go
+ * into the session log, so `startedAt` plus frame number gets you close. For
+ * anything tighter, use a *visible event* present in both: a dimension switch
+ * is logged with a timestamp and shows up in the Lucy recording as a hard step
+ * in image content (see settleProbe.ts). That pairing measures the true
+ * end-to-end delay directly, without trusting either clock.
+ */
+
+import { sessionLog } from './sessionLog';
+
+/** Upload cadence. Small enough to survive a crash, large enough to be cheap. */
+const CHUNK_MS = 2000;
+
+/**
+ * Preference order. vp8 first: it is the most reliably seekable in the tools
+ * likely to open these (browsers, ffmpeg, QuickTime via conversion), and
+ * analysis wants scrubbing more than it wants compression.
+ */
+const MIME_CANDIDATES = [
+  'video/webm;codecs=vp8',
+  'video/webm;codecs=vp9',
+  'video/webm',
+];
+
+export class StreamRecorder {
+  private recorder: MediaRecorder | null = null;
+  private name: string;
+  private endpoint: string | null;
+  private sessionId: string;
+  private chunkIndex = 0;
+  private bytes = 0;
+  private pending: Promise<unknown> = Promise.resolve();
+
+  constructor(name: string, sessionId: string, endpoint: string | null) {
+    this.name = name;
+    this.sessionId = sessionId;
+    this.endpoint = endpoint;
+  }
+
+  get active(): boolean {
+    return this.recorder?.state === 'recording';
+  }
+
+  get bytesWritten(): number {
+    return this.bytes;
+  }
+
+  start(stream: MediaStream): void {
+    if (this.recorder) return;
+    const mimeType = MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m));
+    if (!mimeType) {
+      sessionLog.log('record:unsupported', { name: this.name });
+      return;
+    }
+    // Video only. Audio is not part of any question being asked here, and a
+    // second track would complicate frame-accurate alignment for no gain.
+    const videoOnly = new MediaStream(stream.getVideoTracks());
+    try {
+      this.recorder = new MediaRecorder(videoOnly, { mimeType });
+    } catch (err) {
+      sessionLog.log('record:failed', { name: this.name, error: String(err) });
+      return;
+    }
+    this.recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) this.upload(e.data);
+    };
+    this.recorder.start(CHUNK_MS);
+    sessionLog.log('record:start', {
+      name: this.name,
+      mimeType,
+      // The wall clock alongside the monotonic one, so these files can be lined
+      // up against anything else recorded at the same time.
+      wallClock: new Date().toISOString(),
+      track: videoOnly.getVideoTracks()[0]?.getSettings(),
+    });
+  }
+
+  stop(): void {
+    if (!this.recorder) return;
+    if (this.recorder.state !== 'inactive') this.recorder.stop();
+    this.recorder = null;
+    sessionLog.log('record:stop', {
+      name: this.name,
+      chunks: this.chunkIndex,
+      bytes: this.bytes,
+    });
+  }
+
+  private upload(blob: Blob): void {
+    const index = this.chunkIndex++;
+    this.bytes += blob.size;
+    // Each chunk's arrival time is a coarse timeline for the file — enough to
+    // find roughly where in it a logged event falls.
+    sessionLog.log('record:chunk', { name: this.name, index, bytes: blob.size });
+    if (!this.endpoint) return;
+    const url = `${this.endpoint}?session=${encodeURIComponent(this.sessionId)}&name=${encodeURIComponent(this.name)}`;
+    // Chained rather than fired in parallel: chunks must land in order, and
+    // fetch gives no such guarantee across concurrent calls. Appending a
+    // cluster before its predecessor produces a file that will not play.
+    this.pending = this.pending
+      .then(() => fetch(url, { method: 'POST', body: blob }))
+      .catch((err) => sessionLog.log('record:upload-failed', { name: this.name, index, error: String(err) }));
+  }
+}

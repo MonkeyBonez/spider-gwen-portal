@@ -115,6 +115,7 @@ const TOGGLES: { key: BoolKeys; label: string }[] = [
   { key: 'mirror', label: 'Mirror view' },
   { key: 'swapHandedness', label: 'Swap L/R hands' },
   { key: 'revealFromColor', label: 'Reveal from colour' },
+  { key: 'recordStreams', label: 'Record raw streams (dev)' },
 ];
 
 export interface Readouts {
