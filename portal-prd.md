@@ -14,6 +14,53 @@ Today, creators do this manually: record video → screenshot frames → generat
 
 **Our product collapses that entire workflow into a live browser experience.** Open a website, allow camera access, do the hand gesture, and the portal effect happens in real time — live AI video inside the portal, new dimension on every open. Record and post.
 
+### 1.1 Open question: positioning and visual language
+
+**Status: undecided (Sne, 2026-08-16). Does not block Phase 1.** Recorded here so
+it doesn't get decided by accident.
+
+Two directions:
+
+- **A — Creator tool.** "Make the trend video." Friendly, social-native, obvious
+  onboarding, a big record button. The app is a utility and says so.
+- **B — The device.** The interface is *diegetic*: an instrument for reaching
+  another dimension. Readouts read as telemetry from the portal rather than as a
+  developer's debug panel. The app is a prop that happens to actually work.
+
+**The fact that decides more than it looks like it should: the UI is never in the
+recording.** §4.2 makes that a hard architectural constraint — the exported file
+contains the composite and nothing else. So the visual language is invisible to
+the *trend's* audience. It only ever reaches the creator, plus whatever we put on
+a landing page.
+
+That cuts in a specific direction. Branding can't ride along inside the shared
+artifact, so it can only pay off through **how using it feels** — which is
+exactly what makes someone tell a friend. "It felt like operating a real
+interdimensional device" travels; "it was a competent utility" does not.
+
+Constraints on B, if we go that way:
+
+- **Diegetic skin, utility bones.** The primary path — permission → frame your
+  hands → rehearse → record → download — has to stay dead obvious. Style the
+  instrumentation, never the exit. An aesthetic that taxes the task is a failure
+  however good it looks.
+- **The numbers get easier, not harder.** Latency, generation seconds and switch
+  counts read as natural telemetry in B, where in A they are alarming clutter
+  ("why is this showing me milliseconds?"). The honest cost display we need for
+  a BYO-key product (Phase 2) is *easier* to justify under B.
+- **"High-tech" today is an accident, not a choice.** The current look is a debug
+  panel, which resembles B only because instrument panels and developer panels
+  share ancestry. There is a real difference between *instrument* and
+  *unfinished*, and keeping the debug aesthetic by default lands on the wrong
+  side of it. Choosing B means designing it, not inheriting it.
+
+**What forces the call:** §4.3, the gesture tutorial, is the first screen a
+first-time user meets, and it can't be built in a placeholder visual language.
+Note that its structure already leans B without trying — "show us your hands in
+position 1, then position 2" is calibration framing, which is simultaneously the
+most useful thing to say and the most in-world. That convergence is mild evidence
+the two directions are less opposed here than they usually are.
+
 ---
 
 ## 2. Core technical concept
@@ -464,6 +511,10 @@ the returned stream. That is cut: the Decart SDK reports glass-to-glass latency
 directly (see §2.3), so building a vision-based estimator would be reinventing a
 number we are already handed. What remains here is a **user-facing tutorial** that
 happens to also fit the gesture thresholds, which needs no model and no network.
+
+**This screen forces the positioning call in §1.1** — it is the first thing a
+first-time user sees, so it cannot be built in a placeholder visual language.
+Decide A vs B before designing it, not during.
 
 **The flow, in order.** Structure it as **two named, held positions** rather than
 "do the gesture a few times" (Sne's idea) — it is a two-part shape, so teaching it as
