@@ -271,6 +271,24 @@ button and refuse gracefully on `"critical"`. Its `{ deep: true, model }` form o
 short session with a synthetic source to measure actual `g2gMs`/`ttffMs` before committing —
 **that one costs GPU seconds**, so it is a debug-panel action, never something that runs on load.
 
+**Measured on real hardware, 2026-08-16: Sne reports a visible 1–2s lag between the portal
+contents and reality.** That is worse than the 300–600ms estimated above and past the SDK's own
+"poor" band, so it is now the blocking problem for Phase 1 — at that size the effect does not
+read as a portal at all. Instrumentation was built rather than guessing: the debug panel now
+splits Δ into encode / RTT+path / inference / jitter buffer / decode, and a **session log**
+(`src/sessionLog.ts`, `G` to save) records every `stats` sample as NDJSON so a run can be read
+back afterwards. The candidate causes, in the order they are worth checking:
+
+| Candidate | Signal in the log | What it would mean |
+| --- | --- | --- |
+| **Uplink saturated** | `outboundVideo.qualityLimitationReason: "bandwidth"`, outbound fps well under 30 | The SDK publishes h264 at up to **3.5 Mbps, 720p30** (`config-realtime.js`), and a link that can't hold that queues frames at the encoder. Fix is ours: publish a downscaled track via `replaceVideoTrack` while the local canvas stays 720p. |
+| **Receiver jitter buffer** | `jitterBufferTargetDelayMs` in the hundreds | The browser is holding frames to smooth variance. LiveKit exposes `setPlayoutDelay`, but **the SDK does not expose its Room**, so this would need an SDK change or an upstream request. |
+| **Inference** | `unaccounted` ≈ Δ | Decart's own median is ~285ms; a much larger remainder means the model is the bottleneck and no code here fixes it. Escalate, try another model, or design around it. |
+| **Relayed path** | `path` shows `relay` | TURN instead of direct UDP. Network-level, not code. |
+
+**Also check whether Δ grows across a run** — a constant number is pipeline latency, a climbing
+one is a buffer filling, and those have different fixes.
+
 **Backburner — `onConnectionQuality`.** Still the right input for a "your connection is degrading"
 UI state, and `limitingFactor` (`bandwidth` / `latency` / `loss` / `stall` / `cpu` / `none`) is
 genuinely useful for telling a user *why*. Its debouncing, which makes it wrong for a Δ readout,

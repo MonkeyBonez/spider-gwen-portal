@@ -64,6 +64,7 @@ HTTP, so it needs a tunnel (`ngrok http 5173`) or an HTTPS dev server.
 | `T` | flip the transition timing (`gestural` ↔ `timed`) |
 | `R` | reset the switch counter and state machine |
 | `C` | connect / disconnect the Lucy stream |
+| `G` | save the session log (NDJSON) — same as the panel's "Save log" |
 | `1`–`4` | pick the switch transition and play it immediately |
 
 ## Layout
@@ -72,6 +73,7 @@ HTTP, so it needs a tunnel (`ngrok http 5173`) or an HTTPS dev server.
 | --- | --- |
 | `src/handTracking.ts` | MediaPipe Tasks `HandLandmarker`, VIDEO mode, 2 hands, GPU |
 | `src/lucy.ts` | Decart realtime session — connect, `setPrompt`, Δ/billing stats |
+| `src/sessionLog.ts` | NDJSON recording of every SDK stat and event, for latency work |
 | `src/geometry.ts` | portal polygon, normalised `gap`/`area`, EMA smoothing |
 | `src/triggers/types.ts` | `GestureTrigger` interface — swap in alternative strategies |
 | `src/triggers/closeOpenTrigger.ts` | trigger v1, the PRD §2.2 state machine |
@@ -242,6 +244,42 @@ moment the new dimension looks right.
 Δ comes from the SDK's `stats` event, **not** `onConnectionQuality` — that one is
 debounced to fire only when its verdict changes, so a HUD fed from it sits on a
 stale number indefinitely.
+
+### Where the latency is going
+
+The rows below `ttff` follow a single frame's journey — our encoder, the wire,
+their model, our jitter buffer, our decoder. Whichever is large is the one to
+attack, and they are **completely different problems**:
+
+| Row | If it's big | Fix |
+| --- | --- | --- |
+| `↑ encode` / `↑ limited by: bandwidth` | our uplink can't sustain the 3.5Mbps the SDK publishes at, so frames queue at the encoder | send fewer pixels — a downscaled track for Lucy while the canvas stays 720p |
+| `↔ rtt`, `↔ path: relay` | routed through TURN instead of direct UDP | network / different connection |
+| `≈ unaccounted` | Decart's inference. Their own median is ~285ms | nothing in this codebase — a different model, or design around it |
+| `↓ jitter buf` | the receiver is holding frames to smooth out network variance | a playout-delay hint (needs SDK support — the LiveKit room isn't exposed) |
+| `↓ decode`, `↓ inbound` freezes | this machine can't keep up decoding | codec / resolution |
+
+**Watch whether Δ grows over a run.** A constant number is pipeline latency; one
+that climbs is a buffer filling, which is a different and more fixable bug.
+
+### Session log
+
+`G`, or "Save log" in the panel, writes an NDJSON file: **every `stats` sample
+the SDK emitted** (encode time, quality-limitation reason, jitter buffer, ICE
+path, decode time), plus connection diagnostics, prompt changes, switches and
+the camera settings actually granted — all on one clock.
+
+This exists because latency debugging is retrospective. The question is always
+"what was happening at the moment it felt bad", and by the time you notice, the
+live HUD has moved on. One line per record, so `jq` and pandas both read it
+directly:
+
+```bash
+jq -r 'select(.kind=="stats") | [.t, .data.glassToGlass.medianMs] | @tsv' portal-session-*.ndjson
+```
+
+The API key is never written to it — `scrub()` drops credential-shaped fields
+before anything reaches the buffer, so these files are safe to share.
 
 ## Still to do in Phase 1
 

@@ -5,6 +5,7 @@
  */
 
 import { resetConfig, saveConfig, type Config } from './config';
+import { sessionLog } from './sessionLog';
 import { CONTACT_BLURBS, CONTACT_MODES } from './geometry';
 import {
   TIMING_BLURBS,
@@ -155,7 +156,11 @@ export class DebugPanel {
       resetConfig(this.cfg);
       this.syncInputs();
     });
-    buttons.append(resetCounters, resetCfg);
+    // The session log is the primary artifact for latency work — every stats
+    // sample the SDK emitted, on one clock. `G` does the same thing.
+    const saveLog = button('Save log', () => sessionLog.download());
+    const clearLog = button('Clear log', () => sessionLog.clear());
+    buttons.append(resetCounters, resetCfg, saveLog, clearLog);
     this.el.append(buttons);
   }
 

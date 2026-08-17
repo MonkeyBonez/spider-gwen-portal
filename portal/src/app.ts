@@ -27,6 +27,7 @@ import {
 import { CloseOpenTrigger } from './triggers/closeOpenTrigger';
 import type { GestureTrigger } from './triggers/types';
 import { LucySession, resolveApiKey } from './lucy';
+import { sessionLog } from './sessionLog';
 
 const PORTAL_FADE_MS = 120;
 /** EMA on d(gap)/dt — the raw derivative is far too noisy to threshold on. */
@@ -119,6 +120,15 @@ export class App {
     await this.video.play();
     await waitForMetadata(this.video);
     this.renderer.resize(this.video.videoWidth, this.video.videoHeight);
+
+    // What the camera actually granted, which is rarely exactly what was asked
+    // for — and it decides the uplink bitrate, so it belongs in the log next to
+    // any latency complaint.
+    sessionLog.log('camera', {
+      requested: `${this.cfg.captureWidth}×${this.cfg.captureHeight}@${this.cfg.captureFps}`,
+      granted: this.stream.getVideoTracks()[0]?.getSettings(),
+      videoSize: `${this.video.videoWidth}×${this.video.videoHeight}`,
+    });
 
     this.setStatus('Loading hand model…');
     await this.tracker.init(this.cfg);
@@ -256,6 +266,11 @@ export class App {
       this.dimensionIndex = (this.dimensionIndex + 1) % DIMENSIONS.length;
       this.switches++;
       this.holdStartedAt = t;
+      sessionLog.log('switch', {
+        n: this.switches,
+        dimension: DIMENSIONS[this.dimensionIndex].name,
+        gap: Number(gap.toFixed(3)),
+      });
       // Fired at zero closure, so the portal is fully shut while Lucy settles
       // into the new prompt — which is the whole reason the swap happens here
       // rather than on the trigger (§4.1). Not awaited: blocking the render
@@ -361,15 +376,38 @@ export class App {
   private lucyReadouts(): Record<string, string> {
     if (!this.lucy) return { lucy: this.wantLucy ? 'disconnected' : 'off (camera only)' };
     const s = this.lucy.stats;
+    const b = s.breakdown;
     const since = this.lucy.msSincePrompt(performance.now());
     const ack = this.lucy.promptAckMs;
     return {
       lucy: this.lucy.phase + (this.lucy.frame ? '' : ' (no frames yet)'),
       'Δ g2g': s.g2gMs != null ? `${Math.round(s.g2gMs)}ms (p90 ${fmtMs(s.p90Ms)}, n=${s.sampleCount})` : 'measuring…',
       ttff: fmtMs(s.ttffMs ?? this.lucy.localTtffMs),
+
+      // The breakdown. Read top to bottom, it follows a frame's journey:
+      // our encoder → the wire → their model → our jitter buffer → our decoder.
+      // Whichever row is big is the one worth attacking; `unaccounted` being
+      // big means it is Decart's inference and not ours to fix.
+      '↑ encode': fmtMs(b.encodeMs),
+      '↑ limited by': b.limitedBy ?? '—',
+      '↑ sending': b.outboundKbps != null
+        ? `${b.outboundKbps}kbps${b.targetKbps != null ? ` / ${b.targetKbps} target` : ''} · ${b.outboundFps?.toFixed(0) ?? '?'}fps ${b.outboundSize ?? ''}`
+        : '—',
+      '↔ rtt': fmtMs(b.rttMs),
+      '↔ path': b.path ?? '—',
+      '≈ unaccounted': b.unaccountedMs != null ? `${Math.round(b.unaccountedMs)}ms (inference)` : '—',
+      '↓ jitter buf': b.jitterTargetMs != null
+        ? `${Math.round(b.jitterTargetMs)}ms target / ${fmtMs(b.jitterAvgMs)} avg`
+        : '—',
+      '↓ decode': b.decodeMs != null ? `${fmtMs(b.decodeMs)} (${b.decoder ?? '?'})` : '—',
+      '↓ inbound': b.inboundFps != null
+        ? `${b.inboundFps.toFixed(0)}fps${b.freezes ? ` · ${b.freezes} freezes` : ''}`
+        : '—',
+
       'prompt ack': ack != null ? `${Math.round(ack)}ms` : since != null ? 'pending…' : '—',
       'since prompt': since != null ? `${(since / 1000).toFixed(1)}s` : '—',
       billed: `${s.secondsUsed.toFixed(0)}s`,
+      log: `${sessionLog.size} entries`,
       ...(s.queue ? { queue: `${s.queue.position}/${s.queue.size}` } : {}),
       ...(this.lucy.error ? { 'lucy error': this.lucy.error } : {}),
     };
@@ -394,6 +432,9 @@ export class App {
       this.trigger.reset();
       this.transition.reset();
       this.gesturalTransition.reset();
+    } else if (key === 'g') {
+      sessionLog.download();
+      this.toast(`saved ${sessionLog.size} log entries`);
     } else if (key === 'c') {
       // Manual connect/disconnect. Explicit rather than automatic, because the
       // session bills per second and camera-only is free.
