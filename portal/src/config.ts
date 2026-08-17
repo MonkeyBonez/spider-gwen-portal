@@ -1,5 +1,10 @@
 import { CONTACT_MODES, DEFAULT_WORST_SIDE_BIAS, type ContactMode } from './geometry';
-import { TRANSITION_KINDS, type TransitionKind } from './portalTransition';
+import {
+  TRANSITION_KINDS,
+  TRANSITION_TIMINGS,
+  type TransitionKind,
+  type TransitionTiming,
+} from './portalTransition';
 
 /**
  * Tunable configuration for the portal POC.
@@ -55,9 +60,17 @@ export interface Config {
   // --- switch transition (§4.1) --------------------------------------------
   /** Which collapse/reopen animation plays on a dimension switch. */
   transitionKind: TransitionKind;
+  /** Whether the two halves run on a clock or follow the hands (§4.1). */
+  transitionTiming: TransitionTiming;
   collapseMs: number;
-  /** Time held fully shut. The dimension swaps here; Phase 1 fires setPrompt here. */
+  /**
+   * `timed` only — how long the portal stays shut. The dimension swaps at the
+   * bottom of the collapse either way; Phase 1 fires setPrompt there.
+   * `gestural` ignores this and holds until the hands part.
+   */
   holdMs: number;
+  /** `gestural` only — reopen anyway after this long, if the hands never part. */
+  maxHoldMs: number;
   reopenMs: number;
   /** Back-easing strength on the reopen. 0 = plain ease-out. */
   reopenOvershoot: number;
@@ -86,10 +99,13 @@ export const DEFAULT_CONFIG: Config = {
   emaAlpha: 0.5,
   swapHandedness: false,
 
-  contactMode: 'paired',
+  // `all` measures the whole four-point cloud, so it reads far larger than the
+  // side-pair modes for the same pose — these thresholds are on its scale, not
+  // `paired`'s, and are provisional until tuned at /tune.html.
+  contactMode: 'all',
   worstSideBias: DEFAULT_WORST_SIDE_BIAS,
-  closeThreshold: 0.35,
-  openThreshold: 0.55,
+  closeThreshold: 0.5,
+  openThreshold: 0.9,
   debounceFrames: 3,
   cooldownMs: 500,
   velocityEpsilon: 0.4,
@@ -97,9 +113,13 @@ export const DEFAULT_CONFIG: Config = {
 
   feather: 6,
 
-  transitionKind: 'shutter',
+  // Settled (Sne): iris, driven gesturally. The other kinds and the timed path
+  // stay selectable as controls, but these are the product defaults.
+  transitionKind: 'iris',
+  transitionTiming: 'gestural',
   collapseMs: 110,
   holdMs: 90,
+  maxHoldMs: 2000,
   reopenMs: 240,
   reopenOvershoot: 1.1,
   twistDegrees: 90,
@@ -111,7 +131,9 @@ export const DEFAULT_CONFIG: Config = {
   showPanel: true,
 };
 
-const STORAGE_KEY = 'portal.config.v1';
+// Bumped from v1: `all` contact mode is on a different scale, so a persisted v1
+// close/open threshold would be badly wrong rather than merely stale.
+const STORAGE_KEY = 'portal.config.v2';
 
 export function loadConfig(): Config {
   const cfg = { ...DEFAULT_CONFIG };
@@ -128,6 +150,9 @@ export function loadConfig(): Config {
   }
   if (!CONTACT_MODES.includes(cfg.contactMode)) {
     cfg.contactMode = DEFAULT_CONFIG.contactMode;
+  }
+  if (!TRANSITION_TIMINGS.includes(cfg.transitionTiming)) {
+    cfg.transitionTiming = DEFAULT_CONFIG.transitionTiming;
   }
   // A bias outside [0,1] would extrapolate past the max and make `gap` nonsense.
   if (!Number.isFinite(cfg.worstSideBias)) cfg.worstSideBias = DEFAULT_CONFIG.worstSideBias;

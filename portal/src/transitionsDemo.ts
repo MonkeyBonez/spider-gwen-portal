@@ -12,32 +12,49 @@ import './demo.css';
 import { DIMENSIONS } from './dimensions';
 import { polygonOrder, type PortalPoints, type Pt } from './geometry';
 import {
+  GesturalTransition,
   PortalTransition,
+  TIMING_BLURBS,
   TRANSITION_BLURBS,
   TRANSITION_KINDS,
+  TRANSITION_TIMINGS,
   applyTransition,
   type TransitionKind,
   type TransitionSpec,
+  type TransitionTiming,
 } from './portalTransition';
 
 const W = 260;
 const H = 260;
 /** One synthetic close→open cycle, ms. */
 const CYCLE_MS = 2600;
+/** Thresholds for the synthetic gap, matching the shape of the real ones. */
+const CLOSE_T = 0.35;
+const OPEN_T = 0.9;
 
 const spec: TransitionSpec = {
   kind: 'iris',
   collapseMs: 110,
   holdMs: 90,
+  maxHoldMs: 2000,
   reopenMs: 240,
   overshoot: 1.1,
   twistDegrees: 90,
 };
 
+let timing: TransitionTiming = 'gestural';
+/** How long the synthetic hands dwell fully shut. The knob that separates the two timings. */
+let shutDwell = 0.35;
+
 /** Simulated hands: gap goes wide → shut → wide, like the real gesture. */
 function syntheticPortal(phase: number): { portal: PortalPoints; gap: number } {
-  // phase 0..1 across one cycle. Shut around the middle.
-  const shut = Math.max(0, 1 - Math.abs(phase - 0.5) / 0.28);
+  // phase 0..1 across one cycle. Shut around the middle, with a flat plateau
+  // whose width is `shutDwell` — that plateau is what the timed transition
+  // cannot see and the gestural one can.
+  const half = Math.abs(phase - 0.5);
+  const plateau = 0.02 + shutDwell * 0.3;
+  const ramp = 0.16;
+  const shut = Math.max(0, Math.min(1, (plateau + ramp - half) / ramp));
   const eased = shut * shut * (3 - 2 * shut); // smoothstep
   const halfWidth = 78 * (1 - eased) + 2 * eased;
   const cx = W / 2;
@@ -58,9 +75,9 @@ function syntheticPortal(phase: number): { portal: PortalPoints; gap: number } {
 interface Panel {
   kind: TransitionKind;
   ctx: CanvasRenderingContext2D;
-  transition: PortalTransition;
+  timed: PortalTransition;
+  gestural: GesturalTransition;
   dimension: number;
-  fired: boolean;
   layer: HTMLCanvasElement;
   mask: HTMLCanvasElement;
 }
@@ -71,10 +88,17 @@ root.innerHTML = `
     <h1>Portal switch transitions</h1>
     <p>
       Every panel gets the identical synthetic hand motion — a close→open cycle
-      on a loop — and fires its switch at the same instant. Watch how much of each
-      transition is still visible once the hands are moving underneath it.
+      on a loop — driven through the same state machine the app uses. Watch how much
+      of each transition is still visible once the hands are moving underneath it.
       The dashed outline is where the fingertips actually are; the filled shape is
       what gets drawn.
+    </p>
+    <p>
+      <strong>Compare the two timings.</strong> Push <code>hold shut</code> up so the
+      synthetic hands stay closed for a while. <code>timed</code> reopens on its clock —
+      the portal blooms while the hands are still shut, which is the failure.
+      <code>gestural</code> stays collapsed for exactly as long as the hands are
+      together and blooms the moment they part.
     </p>
   </header>
   <div class="controls" id="controls"></div>
@@ -101,9 +125,9 @@ const panels: Panel[] = TRANSITION_KINDS.map((kind) => {
   return {
     kind,
     ctx: canvas.getContext('2d')!,
-    transition: new PortalTransition(),
+    timed: new PortalTransition(),
+    gestural: new GesturalTransition(),
     dimension: 0,
-    fired: false,
     layer: off(),
     mask: off(),
   };
@@ -139,6 +163,53 @@ for (const s of SLIDERS) {
   controls.append(wrap);
 }
 
+// The dwell slider is the one that separates the two timings: hold the synthetic
+// hands shut long enough and `timed` reopens behind them while `gestural` waits.
+const dwellWrap = document.createElement('label');
+const dwellOut = document.createElement('span');
+dwellOut.textContent = shutDwell.toFixed(2);
+const dwellInput = document.createElement('input');
+dwellInput.type = 'range';
+dwellInput.min = '0';
+dwellInput.max = '1';
+dwellInput.step = '0.05';
+dwellInput.value = String(shutDwell);
+dwellInput.oninput = () => {
+  shutDwell = Number(dwellInput.value);
+  dwellOut.textContent = shutDwell.toFixed(2);
+};
+dwellWrap.append(document.createTextNode('hold shut'), dwellInput, dwellOut);
+controls.append(dwellWrap);
+
+const timingWrap = document.createElement('label');
+const timingSelect = document.createElement('select');
+for (const v of TRANSITION_TIMINGS) {
+  const o = document.createElement('option');
+  o.value = v;
+  o.textContent = v;
+  timingSelect.append(o);
+}
+timingSelect.value = timing;
+const timingBlurb = document.createElement('span');
+timingBlurb.className = 'timing-blurb';
+timingBlurb.textContent = TIMING_BLURBS[timing];
+timingSelect.onchange = () => {
+  timing = timingSelect.value as TransitionTiming;
+  timingBlurb.textContent = TIMING_BLURBS[timing];
+  for (const panel of panels) {
+    panel.timed.reset();
+    panel.gestural.reset();
+  }
+};
+timingWrap.append(document.createTextNode('timing'), timingSelect);
+controls.append(timingWrap, timingBlurb);
+
+const stateOut = document.createElement('span');
+stateOut.className = 'gesture-state';
+controls.append(stateOut);
+
+let gestureState: 'open' | 'shut' | 'parting' = 'open';
+
 const speedWrap = document.createElement('label');
 let speed = 1;
 const speedOut = document.createElement('span');
@@ -167,7 +238,8 @@ function pathOf(pts: Pt[]): Path2D {
 }
 
 function drawPanel(panel: Panel, t: number, live: PortalPoints): void {
-  const state = panel.transition.update(t, { ...spec, kind: panel.kind });
+  const runner = timing === 'gestural' ? panel.gestural : panel.timed;
+  const state = runner.update(t, { ...spec, kind: panel.kind });
   if (state.swap) panel.dimension = (panel.dimension + 1) % DIMENSIONS.length;
 
   const shaped = applyTransition(live, state, panel.kind);
@@ -237,19 +309,35 @@ function frame(now: number): void {
   last = now;
 
   const phase = (simulated % CYCLE_MS) / CYCLE_MS;
-  const { portal } = syntheticPortal(phase);
+  const { portal, gap } = syntheticPortal(phase);
 
-  // Fire every panel at the same instant: the moment the hands are shut.
-  const shutNow = phase > 0.5 && phase < 0.52;
-  for (const panel of panels) {
-    if (shutNow && !panel.fired) {
-      panel.fired = true;
-      panel.transition.trigger(now);
+  // A miniature of the real state machine, so both timings get driven by the
+  // same synthetic gesture rather than by a hardcoded instant.
+  if (gestureState === 'open' && gap < CLOSE_T) {
+    gestureState = 'shut';
+    for (const panel of panels) {
+      panel.timed.trigger(now);
+      panel.gestural.collapse(now);
     }
-    if (!shutNow) panel.fired = false;
-    drawPanel(panel, now, portal);
+  } else if (gestureState === 'shut' && gap > CLOSE_T) {
+    // The hands have started moving apart. Only `gestural` reacts.
+    gestureState = 'parting';
+    for (const panel of panels) panel.gestural.release(now);
+  } else if (gestureState === 'parting' && gap > OPEN_T) {
+    gestureState = 'open';
   }
+
+  for (const panel of panels) drawPanel(panel, now, portal);
+  drawTimeline(gap);
   requestAnimationFrame(frame);
+}
+
+/** Where the synthetic hands are right now, so the panels can be read in context. */
+function drawTimeline(gap: number): void {
+  const shut = gap < CLOSE_T;
+  stateOut.textContent =
+    `hands: ${gestureState.padEnd(8)} gap ${gap.toFixed(2)} ${shut ? '· SHUT' : ''}`;
+  stateOut.classList.toggle('shut', shut);
 }
 
 requestAnimationFrame(frame);

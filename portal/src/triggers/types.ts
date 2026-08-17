@@ -31,6 +31,13 @@ export interface TriggerResult {
   /** Fire the dimension switch on this frame. */
   advance: boolean;
   /**
+   * The hands have started moving apart after a confirmed close — fires once per
+   * cycle, on the first frame of the separation. The gestural transition timing
+   * (PRD §4.1) uses this to start the reopen, so the portal blooms when the
+   * performer opens their hands rather than when a timer says so.
+   */
+  release: boolean;
+  /**
    * The portal is closed enough to hide a transition. Phase 1 uses this to time
    * `setPrompt` so the model's transition frames land behind closed hands.
    */

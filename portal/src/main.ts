@@ -22,7 +22,7 @@ app.innerHTML = `
       <button id="start-btn">Enable camera</button>
       <p class="keys muted">
       D debug panel · L landmarks · Space manual switch · R reset counters<br />
-      1–4 pick the switch transition (none / iris / shutter / twist)
+      1–4 pick the switch transition · T flips the timing
     </p>
       <p class="error hidden" id="error"></p>
     </div>

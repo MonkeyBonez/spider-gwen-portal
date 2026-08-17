@@ -202,3 +202,78 @@ describe('CloseOpenTrigger', () => {
     expect(advances).toBe(1);
   });
 });
+
+describe('release event (gestural transition, PRD §4.1)', () => {
+  /** Collect (advance, release) events with their frame index. */
+  function events(trace: number[]) {
+    const trigger = new CloseOpenTrigger();
+    const cfg: Config = { ...DEFAULT_CONFIG };
+    let prevGap = trace[0];
+    let velocity = 0;
+    let t = 0;
+    const advances: number[] = [];
+    const releases: number[] = [];
+
+    trace.forEach((gap, i) => {
+      t += DT * 1000;
+      const instant = (gap - prevGap) / DT;
+      velocity += (instant - velocity) * 0.35;
+      prevGap = gap;
+      const r = trigger.update(
+        { t, dt: DT, handsPresent: true, gap, area: gap * gap, gapVelocity: velocity },
+        cfg,
+      );
+      if (r.advance) advances.push(i);
+      if (r.release) releases.push(i);
+    });
+    return { advances, releases };
+  }
+
+  it('fires exactly one release per close→open cycle', () => {
+    const { advances, releases } = events(gapTrace(20));
+    expect(advances).toHaveLength(20);
+    expect(releases).toHaveLength(20);
+  });
+
+  it('every release comes after its own advance', () => {
+    const { advances, releases } = events(gapTrace(10));
+    for (let i = 0; i < 10; i++) {
+      expect(releases[i]).toBeGreaterThan(advances[i]);
+      // …and before the next cycle's advance, so the pairing is unambiguous.
+      if (i + 1 < 10) expect(releases[i]).toBeLessThan(advances[i + 1]);
+    }
+  });
+
+  it('does not release while the hands stay shut', () => {
+    // Close and hold: the collapse fires, the reopen must not.
+    const trace = [
+      ...Array.from({ length: 10 }, () => 1.2),
+      ...Array.from({ length: 6 }, (_, i) => 1.2 - (1.12 * (i + 1)) / 6),
+      ...Array.from({ length: 200 }, () => 0.08), // held shut a long time
+    ];
+    const { advances, releases } = events(trace);
+    expect(advances).toHaveLength(1);
+    expect(releases).toHaveLength(0);
+  });
+
+  it('still releases when the hands snap open in a single frame', () => {
+    // A fast open skips the OPENING state entirely; the release must survive it.
+    const trace = [
+      ...Array.from({ length: 10 }, () => 1.2),
+      ...Array.from({ length: 6 }, (_, i) => 1.2 - (1.12 * (i + 1)) / 6),
+      ...Array.from({ length: 6 }, () => 0.08),
+      ...Array.from({ length: 20 }, () => 1.2), // instant jump back open
+    ];
+    const { advances, releases } = events(trace);
+    expect(advances).toHaveLength(1);
+    expect(releases).toHaveLength(1);
+  });
+
+  it('does not release without a preceding close', () => {
+    const trace = [
+      ...Array.from({ length: 30 }, () => 0.05),
+      ...Array.from({ length: 30 }, () => 1.2),
+    ];
+    expect(events(trace).releases).toHaveLength(0);
+  });
+});

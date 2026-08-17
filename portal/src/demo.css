@@ -87,3 +87,33 @@
   color: var(--muted);
   line-height: 1.45;
 }
+
+/* Transition-timing comparison (transitions.html). */
+#demo .controls select {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+#demo .timing-blurb {
+  font-size: 12px;
+  color: var(--muted);
+  align-self: center;
+  max-width: 44ch;
+  line-height: 1.4;
+}
+
+#demo .gesture-state {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--muted);
+  align-self: center;
+  white-space: pre;
+}
+
+#demo .gesture-state.shut {
+  color: #ff9b9b;
+}

@@ -28,11 +28,14 @@ export class CloseOpenTrigger implements GestureTrigger {
   private lastAdvanceAt = -Infinity;
   private lastSeenAt = -Infinity;
   private suppressedByCooldown = false;
+  /** One release per arm, so the reopen can't be re-fired mid-separation. */
+  private released = false;
 
   reset(): void {
     this.state = 'IDLE';
     this.closeFrames = 0;
     this.armed = false;
+    this.released = false;
     this.suppressedByCooldown = false;
   }
 
@@ -40,7 +43,12 @@ export class CloseOpenTrigger implements GestureTrigger {
     if (!s.handsPresent) {
       // Hold state briefly so an occluded close still latches, then give up.
       if (s.t - this.lastSeenAt > cfg.lostResetMs) this.reset();
-      return { state: this.state === 'IDLE' ? 'IDLE' : this.state, advance: false, closed: this.armed };
+      return {
+        state: this.state === 'IDLE' ? 'IDLE' : this.state,
+        advance: false,
+        release: false,
+        closed: this.armed,
+      };
     }
     this.lastSeenAt = s.t;
 
@@ -51,6 +59,7 @@ export class CloseOpenTrigger implements GestureTrigger {
     const isOpen = s.gap > cfg.openThreshold;
 
     let advance = false;
+    let release = false;
     this.suppressedByCooldown = false;
 
     if (this.state === 'IDLE') {
@@ -66,6 +75,7 @@ export class CloseOpenTrigger implements GestureTrigger {
         if (this.closeFrames >= cfg.debounceFrames) {
           this.state = 'CLOSED';
           this.armed = true;
+          this.released = false;
           advance = this.tryFire(s.t, cfg);
         }
       } else {
@@ -76,7 +86,15 @@ export class CloseOpenTrigger implements GestureTrigger {
       // Armed: the switch already fired. Reopening only re-arms for the next
       // cycle, so one close→open cycle can never produce two switches.
       this.state = 'CLOSED';
-      if (opening && !isTouching) this.state = 'OPENING';
+      const separating = opening && !isTouching;
+      if (separating) this.state = 'OPENING';
+      // `release` marks the *start* of the separation, so the reopen animation
+      // tracks the hands. A fast open can skip straight past OPENING to OPEN, so
+      // that counts too — otherwise the release would be lost entirely.
+      if (!this.released && (separating || isOpen)) {
+        this.released = true;
+        release = true;
+      }
       if (isOpen) {
         this.armed = false;
         this.closeFrames = 0;
@@ -84,7 +102,12 @@ export class CloseOpenTrigger implements GestureTrigger {
       }
     }
 
-    return { state: this.state, advance, closed: this.armed || this.state === 'CLOSED' };
+    return {
+      state: this.state,
+      advance,
+      release,
+      closed: this.armed || this.state === 'CLOSED',
+    };
   }
 
   private tryFire(t: number, cfg: Config): boolean {

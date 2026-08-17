@@ -11,6 +11,8 @@ import { describe, expect, it } from 'vitest';
 import {
   CONTACT_BLURBS,
   CONTACT_MODES,
+  allPairDistances,
+  blendSpread,
   DEFAULT_WORST_SIDE_BIAS,
   blendSides,
   normalizedGap,
@@ -371,5 +373,100 @@ describe('worst-side bias (PRD §2.2.1)', () => {
         expect(normalizedGap(shut, mode, bias)).toBeLessThan(CLOSE_THRESHOLD);
       }
     }
+  });
+});
+
+describe('all-four-points contact mode (PRD §2.2.1)', () => {
+  const CLOSE_T = 0.5; // DEFAULT_CONFIG.closeThreshold, on the `all` scale
+
+  /**
+   * The slit: hands flattened together. Index pair touching, thumb pair touching,
+   * so both *sides* are shut — but the index pair is still a thumb-span from the
+   * thumb pair. `paired` calls this closed; `all` calls it open, because the four
+   * points have not converged. This is the entire difference between `all` and
+   * worst-side bias 1.
+   */
+  const SLIT: PortalPoints = {
+    lIndex: { x: 100, y: 100 },
+    rIndex: { x: 101, y: 100 },
+    rThumb: { x: 101, y: 190 },
+    lThumb: { x: 100, y: 190 },
+    handSize: 100,
+  };
+
+  /** All four fingertips converged on one another. */
+  const CONVERGED: PortalPoints = {
+    lIndex: { x: 100, y: 100 },
+    rIndex: { x: 108, y: 101 },
+    rThumb: { x: 106, y: 108 },
+    lThumb: { x: 99, y: 107 },
+    handSize: 100,
+  };
+
+  it('paired reads the slit as shut even at bias 1 — what `all` is for', () => {
+    expect(normalizedGap(SLIT, 'paired', 1)).toBeLessThan(CLOSE_T);
+  });
+
+  it('all reads the slit as open', () => {
+    expect(normalizedGap(SLIT, 'all', 1)).toBeGreaterThan(CLOSE_T);
+  });
+
+  it('all reads four converged fingertips as shut', () => {
+    expect(normalizedGap(CONVERGED, 'all', 1)).toBeLessThan(CLOSE_T);
+  });
+
+  it('at bias 1 it is exactly the diameter of the four points', () => {
+    for (const p of [LEVEL, ROTATED, SLIT, CONVERGED]) {
+      const diameter = Math.max(...allPairDistances(p)) / p.handSize;
+      expect(normalizedGap(p, 'all', 1)).toBeCloseTo(diameter, 10);
+    }
+  });
+
+  it('includes same-hand pairs, unlike every other mode', () => {
+    // lIndex↔lThumb is 90px here and is the widest pair, so it must dominate.
+    const widest = allPairDistances(SLIT);
+    expect(Math.max(...widest)).toBeGreaterThan(89);
+  });
+
+  it('a lone same-hand pinch with the hands apart still reads wide open', () => {
+    // Including same-hand distance can only make `all` stricter, never invent a close.
+    const pinchedButApart: PortalPoints = {
+      lIndex: { x: 20, y: 100 },
+      lThumb: { x: 21, y: 100 },
+      rIndex: { x: 400, y: 100 },
+      rThumb: { x: 401, y: 100 },
+      handSize: 100,
+    };
+    for (const bias of BIASES) {
+      expect(normalizedGap(pinchedButApart, 'all', bias)).toBeGreaterThan(1);
+    }
+  });
+
+  it('is never more permissive than strict at bias 1', () => {
+    // The diameter is a max over all six pairs; strict's two are among them.
+    for (const p of [LEVEL, ROTATED, SLIT, CONVERGED]) {
+      expect(normalizedGap(p, 'all', 1)).toBeGreaterThanOrEqual(
+        normalizedGap(p, 'strict', 1) - 1e-9,
+      );
+    }
+  });
+
+  it('blendSpread matches blendSides for two values', () => {
+    for (const bias of BIASES) {
+      expect(blendSpread([0.6, 0.1], bias)).toBeCloseTo(blendSides(0.6, 0.1, bias), 10);
+    }
+  });
+
+  it('blendSpread is mean at bias 0 and max at bias 1', () => {
+    const v = [0.2, 0.5, 0.9, 0.1];
+    expect(blendSpread(v, 0)).toBeCloseTo(0.425, 10);
+    expect(blendSpread(v, 1)).toBeCloseTo(0.9, 10);
+  });
+
+  it('sideGaps reports the widest and narrowest pair for `all`', () => {
+    const s = sideGaps(SLIT, 'all');
+    const all = allPairDistances(SLIT).map((d) => d / SLIT.handSize);
+    expect(s.a).toBeCloseTo(Math.max(...all), 10);
+    expect(s.b).toBeCloseTo(Math.min(...all), 10);
   });
 });

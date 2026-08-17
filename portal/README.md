@@ -27,7 +27,8 @@ HTTP, so it needs a tunnel (`ngrok http 5173`) or an HTTPS dev server.
 | --- | --- |
 | `D` | toggle the debug panel |
 | `L` | toggle the landmark overlay |
-| `Space` | advance the dimension manually (plays the full transition) |
+| `Space` | play the transition manually. Under `gestural`, one tap collapses and the next reopens |
+| `T` | flip the transition timing (`gestural` ↔ `timed`) |
 | `R` | reset the switch counter and state machine |
 | `1`–`4` | pick the switch transition and play it immediately |
 
@@ -139,9 +140,19 @@ The dimension changes at the low point, so it is never seen mid-flight — the m
 guaranteed by the animation rather than by how well the hands happened to occlude
 the portal.
 
-Shortlisted to `shutter` (default), `iris` and `twist`, with `none` as the control —
-final pick deferred to the MVP, when the hold can be tuned against Lucy's real settle
-time instead of a flat colour.
+**Settled: `iris`, driven `gestural`.** `shutter`, `twist` and the `timed` path stay
+selectable as controls.
+
+`gestural` splits the animation into two independently triggered halves: it collapses
+when the four points come together and **stays shut for as long as they stay
+together**, then reopens the moment they start moving apart. A fixed hold can't know
+what the hands are doing, so it either blooms behind still-closed hands or lags a fast
+cycle; this can't. `holdMs` applies to `timed` only — under `gestural` the only timer
+is `maxHoldMs`, a safety valve for hands leaving the frame while shut.
+
+Press `T` to flip timing live, or compare on synthetic hands at `/transitions.html`:
+push `hold shut` up and watch `timed` reopen behind the closed hands while `gestural`
+waits.
 
 Compare them at **`/transitions.html`**: they run side by side on identical
 synthetic hands, so the only difference you see is the transition itself. The dashed

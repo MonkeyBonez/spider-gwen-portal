@@ -6,7 +6,12 @@
 
 import { resetConfig, saveConfig, type Config } from './config';
 import { CONTACT_BLURBS, CONTACT_MODES } from './geometry';
-import { TRANSITION_BLURBS, TRANSITION_KINDS } from './portalTransition';
+import {
+  TIMING_BLURBS,
+  TRANSITION_BLURBS,
+  TRANSITION_KINDS,
+  TRANSITION_TIMINGS,
+} from './portalTransition';
 
 type NumKeys = {
   [K in keyof Config]: Config[K] extends number ? K : never;
@@ -46,7 +51,15 @@ const SLIDERS: SliderSpec[] = [
   { key: 'lostResetMs', label: 'Lost reset', min: 0, max: 3000, step: 100 },
   { key: 'feather', label: 'Feather px', min: 0, max: 40, step: 1 },
   { key: 'collapseMs', label: 'Collapse', min: 0, max: 600, step: 10 },
-  { key: 'holdMs', label: 'Hold shut', min: 0, max: 600, step: 10, hint: 'where the swap lands' },
+  { key: 'holdMs', label: 'Hold shut', min: 0, max: 600, step: 10, hint: 'timed only' },
+  {
+    key: 'maxHoldMs',
+    label: 'Max hold',
+    min: 0,
+    max: 6000,
+    step: 250,
+    hint: 'gestural only · reopen anyway if the hands never part',
+  },
   { key: 'reopenMs', label: 'Reopen', min: 0, max: 900, step: 10 },
   { key: 'reopenOvershoot', label: 'Reopen overshoot', min: 0, max: 3, step: 0.1, hint: '0 = no pop' },
   { key: 'twistDegrees', label: 'Twist°', min: 0, max: 360, step: 15, hint: 'twist variant only' },
@@ -110,6 +123,7 @@ export class DebugPanel {
     this.el.append(
       this.select('contactMode', 'Contact mode', CONTACT_MODES, CONTACT_BLURBS),
       this.select('transitionKind', 'Switch transition', TRANSITION_KINDS, TRANSITION_BLURBS),
+      this.select('transitionTiming', 'Transition timing', TRANSITION_TIMINGS, TIMING_BLURBS),
     );
 
     for (const spec of SLIDERS) this.el.append(this.slider(spec));

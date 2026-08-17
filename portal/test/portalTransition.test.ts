@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../src/config';
 import {
+  GesturalTransition,
   PortalTransition,
   TRANSITION_BLURBS,
   TRANSITION_KINDS,
@@ -21,6 +22,7 @@ const SPEC: TransitionSpec = {
   kind: 'shutter',
   collapseMs: DEFAULT_CONFIG.collapseMs,
   holdMs: DEFAULT_CONFIG.holdMs,
+  maxHoldMs: DEFAULT_CONFIG.maxHoldMs,
   reopenMs: DEFAULT_CONFIG.reopenMs,
   overshoot: DEFAULT_CONFIG.reopenOvershoot,
   twistDegrees: DEFAULT_CONFIG.twistDegrees,
@@ -184,5 +186,122 @@ describe('applyTransition geometry', () => {
 
   it('leaves handSize alone so normalised signals stay meaningful', () => {
     expect(applyTransition(PORTAL, collapsed, 'iris').handSize).toBe(PORTAL.handSize);
+  });
+});
+
+describe('GesturalTransition (PRD §4.1)', () => {
+  /** Run frames at 60fps from `from` to `to`, collecting the states. */
+  function run(g: GesturalTransition, from: number, to: number, spec = SPEC) {
+    const states = [];
+    for (let t = from; t <= to; t += 16) states.push({ t, ...g.update(t, spec) });
+    return states;
+  }
+
+  it('holds shut indefinitely until released', () => {
+    const g = new GesturalTransition();
+    g.collapse(0);
+    // Ten seconds — far past any holdMs — with maxHold disabled.
+    const spec = { ...SPEC, maxHoldMs: 0 };
+    const states = run(g, 0, 10_000, spec);
+    const last = states.at(-1)!;
+    expect(last.phase).toBe('hold');
+    expect(last.closure).toBe(0);
+  });
+
+  it('the timed version would have reopened in that same window', () => {
+    // The contrast that motivates the gestural timing: a fixed hold cannot know
+    // the hands are still shut.
+    const timed = new PortalTransition();
+    timed.trigger(0);
+    const end = SPEC.collapseMs + SPEC.holdMs + SPEC.reopenMs;
+    expect(timed.update(end + 16, SPEC).phase).toBe('idle');
+  });
+
+  it('reopens only once released, and lands fully open', () => {
+    const g = new GesturalTransition();
+    g.collapse(0);
+    run(g, 0, 1000, { ...SPEC, maxHoldMs: 0 });
+    g.release(1000);
+    const states = run(g, 1000, 1000 + SPEC.reopenMs + 64, { ...SPEC, maxHoldMs: 0 });
+    expect(states.some((s) => s.phase === 'reopen')).toBe(true);
+    expect(states.at(-1)!.phase).toBe('idle');
+    expect(states.at(-1)!.closure).toBe(1);
+  });
+
+  it('swaps exactly once per collapse→release cycle', () => {
+    const g = new GesturalTransition();
+    let swaps = 0;
+    for (let cycle = 0; cycle < 20; cycle++) {
+      const base = cycle * 2000;
+      g.collapse(base);
+      for (const s of run(g, base, base + 900, { ...SPEC, maxHoldMs: 0 })) {
+        if (s.swap) swaps++;
+      }
+      g.release(base + 900);
+      for (const s of run(g, base + 900, base + 1900, { ...SPEC, maxHoldMs: 0 })) {
+        if (s.swap) swaps++;
+      }
+    }
+    expect(swaps).toBe(20);
+  });
+
+  it('swaps at zero closure, so the change is always masked', () => {
+    const g = new GesturalTransition();
+    g.collapse(0);
+    const swapFrame = run(g, 0, 900, { ...SPEC, maxHoldMs: 0 }).find((s) => s.swap)!;
+    expect(swapFrame).toBeDefined();
+    expect(swapFrame.closure).toBe(0);
+  });
+
+  it('still swaps when released before the collapse finishes', () => {
+    // A flick too fast to fully close must not silently skip the dimension.
+    const g = new GesturalTransition();
+    g.collapse(0);
+    g.update(16, SPEC); // mid-collapse
+    g.release(16);
+    const states = run(g, 16, 16 + SPEC.reopenMs + 64);
+    expect(states.filter((s) => s.swap)).toHaveLength(1);
+  });
+
+  it('reopens itself if the release never arrives', () => {
+    const g = new GesturalTransition();
+    g.collapse(0);
+    const states = run(g, 0, SPEC.maxHoldMs + SPEC.reopenMs + 200);
+    expect(states.at(-1)!.phase).toBe('idle');
+  });
+
+  it('a release with nothing collapsed is ignored', () => {
+    const g = new GesturalTransition();
+    g.release(0);
+    expect(g.update(16, SPEC).phase).toBe('idle');
+    expect(g.active).toBe(false);
+  });
+
+  it('re-collapsing mid-reopen is continuous, not a jump back to 1', () => {
+    // Overshoot off, so closure stays within [0,1] and "partly open" is
+    // unambiguous — easeOutBack legitimately exceeds 1 mid-reopen otherwise.
+    const spec = { ...SPEC, maxHoldMs: 0, overshoot: 0 };
+    const g = new GesturalTransition();
+    g.collapse(0);
+    run(g, 0, 300, spec);
+    g.release(300);
+    const mid = g.update(300 + spec.reopenMs / 2, spec);
+    expect(mid.closure).toBeGreaterThan(0);
+    expect(mid.closure).toBeLessThan(1);
+    g.collapse(300 + spec.reopenMs / 2);
+    // Collapse resumes from where the reopen got to, not from fully open.
+    const next = g.update(300 + spec.reopenMs / 2 + 1, spec);
+    expect(next.closure).toBeLessThanOrEqual(mid.closure + 1e-9);
+  });
+
+  it('kind `none` collapses and reopens instantly', () => {
+    const g = new GesturalTransition();
+    const spec = { ...SPEC, kind: 'none' as const, maxHoldMs: 0 };
+    g.collapse(0);
+    const shut = g.update(0, spec);
+    expect(shut.closure).toBe(0);
+    expect(shut.swap).toBe(true);
+    g.release(100);
+    expect(g.update(100, spec).phase).toBe('idle');
   });
 });

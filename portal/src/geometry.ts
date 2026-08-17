@@ -80,15 +80,35 @@ export function polygonArea(pts: Pt[]): number {
  * `any`     the single closest pair of points across the two hands. The literal
  *           "any two points from opposite hands touching" — most permissive, and
  *           see the hinge caveat below.
+ * `all`     the spread of all four points — every pairwise distance, *including*
+ *           same-hand ones. At bias 1 this is the cloud's diameter, so the close
+ *           only counts when all four fingertips have converged on one another.
+ *           Default. See the note on the slit below.
+ *
+ * `any` and `all` are deliberate opposites: "any two points touching" versus
+ * "all four points together".
+ *
+ * Why same-hand pairs are excluded from `strict`/`paired`/`any` but included in
+ * `all`: in a permissive rule, an index touching its own thumb is a pinch and says
+ * nothing about the hands meeting, so counting it would invent closes. `all`
+ * requires *every* pair to be small, so including same-hand distance can only make
+ * it stricter — a lone pinch with the hands apart still reads wide open.
+ *
+ * The slit: `paired` (and bias 1) call the portal shut when both sides are shut,
+ * which includes hands flattened together with the index pair still a thumb-span
+ * away from the thumb pair — a zero-area line, not a point. `all` calls that open,
+ * because the four points have not converged. That is the whole difference between
+ * `all` and worst-side bias 1.
  */
-export type ContactMode = 'strict' | 'paired' | 'any';
+export type ContactMode = 'strict' | 'paired' | 'any' | 'all';
 
-export const CONTACT_MODES: ContactMode[] = ['strict', 'paired', 'any'];
+export const CONTACT_MODES: ContactMode[] = ['strict', 'paired', 'any', 'all'];
 
 export const CONTACT_BLURBS: Record<ContactMode, string> = {
   strict: 'Index↔index and thumb↔thumb only. Breaks if a hand rotates.',
   paired: 'Best of the parallel or crossed pairing. Rotation-proof, still needs the portal shut.',
   any: 'Closest single cross-hand pair. Most forgiving — but a thumb-pivot hinge never reads as open.',
+  all: 'All four fingertips converged. Strictest, and on a different scale — retune the thresholds.',
 };
 
 /**
@@ -111,12 +131,24 @@ export const CONTACT_BLURBS: Record<ContactMode, string> = {
  * lopsided poses move, so the close/open thresholds do not need retuning.
  */
 export function blendSides(a: number, b: number, bias: number): number {
-  const k = Math.min(1, Math.max(0, bias));
-  const mean = (a + b) / 2;
-  return mean + (Math.max(a, b) - mean) * k;
+  return blendSpread([a, b], bias);
 }
 
-/** Provisional until the ladder in `/closure.html` settles it (PRD §2.2.1). */
+/**
+ * `blendSides` for any number of distances: mean → max as `bias` goes 0 → 1.
+ *
+ * For two values this is exactly `blendSides`. For the six pairwise distances of
+ * the four portal points (`all` mode) bias 1 gives the cloud's **diameter**, so
+ * "closed" means every point is within the threshold of every other point.
+ */
+export function blendSpread(values: readonly number[], bias: number): number {
+  if (values.length === 0) return 0;
+  const k = Math.min(1, Math.max(0, bias));
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  return mean + (Math.max(...values) - mean) * k;
+}
+
+/** Provisional until the ladder in `/tune.html` settles it (PRD §2.2.1). */
 export const DEFAULT_WORST_SIDE_BIAS = 0.7;
 
 /** The two cross-hand distances each pairing is built from, in pixels. */
@@ -125,6 +157,19 @@ function pairings(p: PortalPoints) {
     parallel: [dist(p.lIndex, p.rIndex), dist(p.lThumb, p.rThumb)] as const,
     crossed: [dist(p.lIndex, p.rThumb), dist(p.lThumb, p.rIndex)] as const,
   };
+}
+
+/**
+ * Every pairwise distance among the four portal points, in pixels — six of them,
+ * same-hand pairs included. The input to `all` mode.
+ */
+export function allPairDistances(p: PortalPoints): number[] {
+  const pts = [p.lIndex, p.rIndex, p.rThumb, p.lThumb];
+  const out: number[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) out.push(dist(pts[i], pts[j]));
+  }
+  return out;
 }
 
 /**
@@ -155,6 +200,11 @@ export function normalizedGap(
       // No two-sided notion here, so `bias` does not apply.
       g = Math.min(...parallel, ...crossed);
       break;
+    case 'all':
+      // All four points as one cloud. At bias 1 this is the diameter, so the
+      // portal only counts as shut once every fingertip has met every other.
+      g = blendSpread(allPairDistances(p), bias);
+      break;
     case 'paired':
     default:
       // The blend combines the two sides *within* a pairing; the min still picks
@@ -171,7 +221,9 @@ export function normalizedGap(
  * `strict` always reports the parallel pairing; `paired` reports whichever
  * pairing won. `any` has no two sides — it returns the single closest cross-hand
  * pair as both values, so a caller rendering "a / b" shows a matched pair rather
- * than something misleading.
+ * than something misleading. `all` has no two sides either: it reports the widest
+ * and narrowest of the six pairwise distances, so "a / b" reads as the spread of
+ * the cloud.
  */
 export function sideGaps(
   p: PortalPoints,
@@ -188,6 +240,10 @@ export function sideGaps(
     case 'any': {
       const closest = Math.min(...parallel, ...crossed) / scale;
       return { a: closest, b: closest };
+    }
+    case 'all': {
+      const all = allPairDistances(p);
+      return { a: Math.max(...all) / scale, b: Math.min(...all) / scale };
     }
     case 'paired':
     default:

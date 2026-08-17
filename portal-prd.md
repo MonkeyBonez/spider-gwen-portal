@@ -244,6 +244,28 @@ the collapse's low point a few frames later. In
 Phase 1, `setPrompt` fires there, and the hold duration becomes the knob for however
 long Lucy needs to settle (§7's open question) — lengthen the hold, not the gesture.
 
+**Settled: the two halves are driven by the gesture, not by a clock** (Sne). The
+transition is two independently triggered steps rather than one timed sequence:
+
+| | `timed` | **`gestural`** (default) |
+| --- | --- | --- |
+| collapse starts | when the switch fires | when the four points come together (§2.2.1) |
+| how long it stays shut | `holdMs`, a fixed number | **as long as the hands stay together** |
+| reopen starts | when the timer expires | **when the hands start moving apart** |
+
+Why this is the better model: a fixed hold cannot know what the hands are doing, so it
+either reopens *behind still-closed hands* — the portal blooms into a dimension the
+viewer can't see yet — or lags a fast cycle. Under `gestural` the portal is shut for
+exactly the span the performer holds it shut, and the bloom into the next dimension is
+the reveal, synchronised to the hands opening by construction. `holdMs` becomes dead
+weight; the only safety is `maxHoldMs`, which reopens anyway if the hands leave frame
+while shut. `timed` stays selectable as the control.
+
+Note what this does to §7's open question about Lucy's settle time: under `gestural`
+the hold is however long the performer holds, so a slow `setPrompt` is absorbed by the
+gesture itself rather than needing a longer configured hold. Worth re-checking in
+Phase 1 — if Lucy is slower than a natural close, we still need a floor.
+
 **The variable that actually matters** is not which shape it collapses to, but how the
 transition's duration compares to the hand motion underneath it. Hands open in roughly
 150–250ms. A reopen tween of about that length is invisible — the portal just tracks
@@ -252,26 +274,29 @@ noticeably slower than the hands (the portal lags, then catches up) or snappier
 (the portal is already open before the hands are). Tune duration first, pick the shape
 second.
 
-**Shortlisted to three.** A wider set was prototyped (an eyelid drop and a sideways
-wipe); those are cut. The remaining three stay in and the choice between them is
-**deferred until the MVP**, decided on feel once the hold can be tuned against Lucy's
-real settle time rather than against a flat colour fill:
+**Settled: `iris`.** A wider set was prototyped (an eyelid drop and a sideways wipe);
+those are cut. Of the shortlist, **Sne picked `iris`** — the portal shrinks to a point
+and blooms back, which reads as a lens or an aperture rather than as hands. The others
+stay selectable as controls, not as open questions:
 
 | Variant | Collapses to | Reads as |
 | --- | --- | --- |
-| `shutter` | a vertical slit on the midline | the hands themselves closing — physically congruent. Current default. |
-| `iris` | a point at the centre | camera shutter / lens; mechanical rather than bodily |
+| **`iris`** | **a point at the centre** | **camera shutter / lens. The chosen default.** |
+| `shutter` | a vertical slit on the midline | the hands themselves closing — physically congruent, but reads as a wipe |
 | `twist` | a point, while rotating | a wormhole spinning shut |
 | `none` | — | not a fourth variant — the off switch, kept as the control case |
 
 Timing and overshoot are sliders, not variants — a hard collapse with a slow bloom and
 a strong overshoot is a very different feel from a symmetric ease, using the same shape.
 
-Open questions to settle by looking at them:
+Settled so far: **`iris`**, **`gestural`**. Still open:
 
 - Does the transition survive being filmed, or does it read as a glitch? The control
   case (`none`) exists to answer this honestly — it is possible the cleanest result is
-  no animation at all, with the hands doing the masking as originally planned.
+  no animation at all, with the hands doing the masking as originally planned. This is
+  a question for a real take with Lucy behind it, not a flat colour.
+- Collapse and reopen durations. `iris` and `gestural` fix the *shape* and the
+  *triggering*; `collapseMs` and `reopenMs` are still guesses.
 - Should the reopen track the live fingertips (current behaviour) or reopen to the
   fingertip positions *captured at collapse*? The former keeps the portal glued to the
   hands; the latter would let the portal open somewhere the hands no longer are, which

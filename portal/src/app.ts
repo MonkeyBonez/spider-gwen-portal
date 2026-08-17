@@ -17,8 +17,10 @@ import { HandTracker } from './handTracking';
 import { Renderer } from './renderer';
 import { DebugPanel } from './debugPanel';
 import {
+  GesturalTransition,
   PortalTransition,
   TRANSITION_KINDS,
+  TRANSITION_TIMINGS,
   applyTransition,
   type TransitionSpec,
 } from './portalTransition';
@@ -43,6 +45,7 @@ export class App {
   private panel: DebugPanel;
   private trigger: GestureTrigger = new CloseOpenTrigger();
   private transition = new PortalTransition();
+  private gesturalTransition = new GesturalTransition();
 
   private video = document.createElement('video');
   private stream: MediaStream | null = null;
@@ -156,17 +159,28 @@ export class App {
 
     // The trigger only *starts* the transition; the dimension actually changes
     // when the portal is fully shut, so the swap is never seen mid-flight (§4.1).
-    if (result.advance) this.transition.trigger(t);
+    // Under `gestural` the two halves are driven separately: the close collapses
+    // it, and the hands parting is what reopens it.
+    const gestural = this.cfg.transitionTiming === 'gestural';
+    if (gestural) {
+      if (result.advance) this.gesturalTransition.collapse(t);
+      if (result.release) this.gesturalTransition.release(t);
+    } else if (result.advance) {
+      this.transition.trigger(t);
+    }
 
     const spec: TransitionSpec = {
       kind: this.cfg.transitionKind,
       collapseMs: this.cfg.collapseMs,
       holdMs: this.cfg.holdMs,
+      maxHoldMs: this.cfg.maxHoldMs,
       reopenMs: this.cfg.reopenMs,
       overshoot: this.cfg.reopenOvershoot,
       twistDegrees: this.cfg.twistDegrees,
     };
-    const transition = this.transition.update(t, spec);
+    const transition = gestural
+      ? this.gesturalTransition.update(t, spec)
+      : this.transition.update(t, spec);
 
     if (transition.swap) {
       // Phase 1 swaps this for `realtimeClient.setPrompt(nextDimension.prompt)`.
@@ -250,19 +264,41 @@ export class App {
       this.switches = 0;
       this.trigger.reset();
       this.transition.reset();
+      this.gesturalTransition.reset();
+    } else if (key === 't') {
+      const timings = TRANSITION_TIMINGS;
+      const next = timings[(timings.indexOf(this.cfg.transitionTiming) + 1) % timings.length];
+      this.cfg.transitionTiming = next;
+      saveConfig(this.cfg);
+      this.panel.syncInputs();
+      this.transition.reset();
+      this.gesturalTransition.reset();
+      this.toast(`timing: ${next}`);
     } else if (e.code === 'Space') {
-      // Manual advance — plays the full transition without needing the gesture,
-      // so you can compare variants back to back with your hands held still.
+      // Manual advance — plays the transition without needing the gesture, so you
+      // can compare variants back to back with your hands held still. Under
+      // `gestural` a tap collapses and a second tap reopens, which is the point.
       e.preventDefault();
-      this.transition.trigger(performance.now());
+      this.playTransition();
     } else if (key >= '1' && key <= String(TRANSITION_KINDS.length)) {
       this.cfg.transitionKind = TRANSITION_KINDS[Number(key) - 1];
       saveConfig(this.cfg);
       this.panel.syncInputs();
       this.toast(this.cfg.transitionKind);
       // Play it immediately so the variant can be judged the moment it is picked.
-      this.transition.trigger(performance.now());
+      this.playTransition();
     }
+  }
+
+  /** Manual play. Under `gestural` this toggles the two halves. */
+  private playTransition(): void {
+    const now = performance.now();
+    if (this.cfg.transitionTiming !== 'gestural') {
+      this.transition.trigger(now);
+      return;
+    }
+    if (this.gesturalTransition.active) this.gesturalTransition.release(now);
+    else this.gesturalTransition.collapse(now);
   }
 
   private toast(text: string): void {
