@@ -82,7 +82,7 @@ const SLIDERS: SliderSpec[] = [
     step: 10,
     // Measured Δ was ~730ms on 2026-08-16, so the old 500 ceiling could not
     // reach alignment at all.
-    hint: 'manual mode only — under auto this shows what is currently applied',
+    hint: 'manual mode only · under auto, read the live value from the `sync Δ` row above, not this handle',
   },
   {
     key: 'revealHoldMs',
