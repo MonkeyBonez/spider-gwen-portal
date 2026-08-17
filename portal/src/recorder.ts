@@ -66,39 +66,70 @@ export class StreamRecorder {
     return this.bytes;
   }
 
-  start(stream: MediaStream): void {
-    if (this.recorder) return;
-    const mimeType = MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m));
-    if (!mimeType) {
-      sessionLog.log('record:unsupported', { name: this.name });
-      return;
-    }
-    // Video only. Audio is not part of any question being asked here, and a
-    // second track would complicate frame-accurate alignment for no gain.
-    const videoOnly = new MediaStream(stream.getVideoTracks());
+  /**
+   * Begin recording. **Returns false rather than throwing, always.**
+   *
+   * This is diagnostics. It must never be able to take down the session it is
+   * observing — which it did once: `MediaRecorder.start()` threw on a remote
+   * track that had not yet produced a frame, the exception escaped into the
+   * caller's connect handler, and a perfectly healthy paid Lucy session was
+   * reported as a connection failure and dropped. Hence the whole body in one
+   * try, not just the constructor.
+   */
+  start(stream: MediaStream): boolean {
+    if (this.recorder) return true;
     try {
-      this.recorder = new MediaRecorder(videoOnly, { mimeType });
+      const mimeType = MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m));
+      if (!mimeType) {
+        sessionLog.log('record:unsupported', { name: this.name });
+        return false;
+      }
+      // A remote WebRTC track exists before it carries anything, and recording
+      // one in that state is what threw. Refuse early with a reason instead.
+      const tracks = stream.getVideoTracks();
+      if (tracks.length === 0 || tracks[0].readyState !== 'live' || tracks[0].muted) {
+        sessionLog.log('record:not-ready', {
+          name: this.name,
+          tracks: tracks.length,
+          readyState: tracks[0]?.readyState ?? null,
+          muted: tracks[0]?.muted ?? null,
+        });
+        return false;
+      }
+      // Video only. Audio is not part of any question being asked here, and a
+      // second track would complicate frame-accurate alignment for no gain.
+      const videoOnly = new MediaStream(tracks);
+      const recorder = new MediaRecorder(videoOnly, { mimeType });
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) this.upload(e.data);
+      };
+      recorder.onerror = (e) =>
+        sessionLog.log('record:error', { name: this.name, error: String(e) });
+      recorder.start(CHUNK_MS);
+      this.recorder = recorder;
+      sessionLog.log('record:start', {
+        name: this.name,
+        mimeType,
+        // The wall clock alongside the monotonic one, so these files can be
+        // lined up against anything else recorded at the same time.
+        wallClock: new Date().toISOString(),
+        track: videoOnly.getVideoTracks()[0]?.getSettings(),
+      });
+      return true;
     } catch (err) {
       sessionLog.log('record:failed', { name: this.name, error: String(err) });
-      return;
+      this.recorder = null;
+      return false;
     }
-    this.recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) this.upload(e.data);
-    };
-    this.recorder.start(CHUNK_MS);
-    sessionLog.log('record:start', {
-      name: this.name,
-      mimeType,
-      // The wall clock alongside the monotonic one, so these files can be lined
-      // up against anything else recorded at the same time.
-      wallClock: new Date().toISOString(),
-      track: videoOnly.getVideoTracks()[0]?.getSettings(),
-    });
   }
 
   stop(): void {
     if (!this.recorder) return;
-    if (this.recorder.state !== 'inactive') this.recorder.stop();
+    try {
+      if (this.recorder.state !== 'inactive') this.recorder.stop();
+    } catch (err) {
+      sessionLog.log('record:stop-failed', { name: this.name, error: String(err) });
+    }
     this.recorder = null;
     sessionLog.log('record:stop', {
       name: this.name,

@@ -196,14 +196,26 @@ export class App {
 
     try {
       await session.connect(this.stream);
-      this.startRecording();
     } catch (err) {
+      // Hang up before dropping the reference. A connect that threw part-way
+      // can still have left a session open on Decart's side, and once `this.lucy`
+      // is null nothing can reach it to disconnect — it would bill until the tab
+      // closed.
+      session.disconnect();
       this.lucy = null;
       const msg = err instanceof Error ? err.message : String(err);
       this.setLucyChip('failed', 'error');
       this.toast(`Lucy: ${msg}`);
       console.error('Lucy connect failed', err);
+      return;
     }
+
+    // Deliberately outside the try above. Recording is diagnostics; it must
+    // never be able to fail the session it is observing — which is exactly what
+    // happened on 2026-08-17, when MediaRecorder threw on a remote track that
+    // had not yet produced a frame and a healthy paid session was reported as
+    // a connection failure and abandoned mid-flight.
+    this.startRecording();
   }
 
   disconnectLucy(reason = 'disconnected'): void {
@@ -603,7 +615,20 @@ export class App {
     this.camRecorder = new StreamRecorder('camera', sessionLog.sessionId, endpoint);
     this.lucyRecorder = new StreamRecorder('lucy', sessionLog.sessionId, endpoint);
     this.camRecorder.start(this.stream);
-    this.lucyRecorder.start(remote);
+
+    // The remote track exists at connect but is still muted until the first
+    // frame decodes ~20ms later, and recording it in that state fails. Retry
+    // until it carries something rather than starting a file that is empty.
+    const tryLucy = (attempt: number): void => {
+      if (!this.lucyRecorder) return;
+      if (this.lucyRecorder.start(remote)) return;
+      if (attempt >= 40) {
+        sessionLog.log('record:gave-up', { name: 'lucy', attempts: attempt });
+        return;
+      }
+      window.setTimeout(() => tryLucy(attempt + 1), 250);
+    };
+    tryLucy(0);
   }
 
   private stopRecording(): void {
