@@ -14,6 +14,12 @@
  * Prompt text is **verbatim as written by Sne**. Wording is the experiment, so
  * it does not get tidied — not the capitalisation, not the missing "is a" in
  * `mask-only`. See `PROMPT_LIBRARY` below for the six-world set this replaced.
+ *
+ * The two halves now differ in more than phrasing: the first two describe only
+ * the person, the second two also describe the scene behind them. That is worth
+ * watching specifically, because the portal is a small window onto the frame —
+ * a background clause competes for very few pixels, and may show up mostly as a
+ * change in colour and light on the subject rather than as a visible setting.
  */
 
 export interface Dimension {
@@ -38,19 +44,22 @@ export const DIMENSIONS: Dimension[] = [
       'Comic-book animated superhero in a red-and-blue spider suit, halftone shading, bold ink outlines',
   },
   {
-    // Names the subject explicitly and adds multiverse framing, but drops every
-    // rendering instruction — so the look has to come from "other part of
-    // multiverse" alone.
+    // Names the subject and adds multiverse framing, with a background clause
+    // but still no rendering instruction — so the look has to come from the
+    // scene description alone.
     name: 'multiverse',
     color: '#2f7bff',
-    prompt: 'Subject is a Superhero in a red-and-blue spider suit in other part of multiverse',
+    prompt:
+      'Subject is a Superhero in a red-and-blue spider suit in other part of multiverse - background is high tech',
   },
   {
-    // The shortest, and the only one that asks for a mask rather than a suit —
-    // worth watching whether it transforms the face more and the body less.
+    // The only one asking for a mask rather than a suit, and the only one
+    // naming a concrete location. Two things to watch: whether it transforms
+    // the face more and the body less, and whether a specific setting survives
+    // — the portal is a small window, so most of a skyscraper falls outside it.
     name: 'mask-only',
     color: '#c84bff',
-    prompt: 'Subject Superhero in a red-and-blue spider mask',
+    prompt: 'Subject Superhero in a red-and-blue spider mask in a skyscraper',
   },
 ];
 
