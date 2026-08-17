@@ -1,6 +1,17 @@
 import './style.css';
 import { App } from './app';
 import { resolveApiKey, storeApiKey } from './lucy';
+import { sessionLog } from './sessionLog';
+
+// Under `npm run dev`, every session streams itself to portal/logs/*.ndjson —
+// no keypress, nothing to remember, and a crashed or reloaded tab still leaves
+// its evidence behind. The endpoint only exists on the dev server (see
+// `sessionLogPlugin` in vite.config.ts); `G` remains as a manual export.
+if (import.meta.env.DEV) sessionLog.startAutoFlush('/__log');
+// Logged unconditionally so every page load leaves a file behind — a session
+// that failed before connecting is still evidence, and an empty logs/ then
+// means the pipe is broken rather than that nothing happened.
+sessionLog.log('app:load', { url: location.pathname });
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `

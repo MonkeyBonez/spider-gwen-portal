@@ -30,3 +30,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Session logs written by the dev server (vite.config.ts sessionLogPlugin).
+# Diagnostic scratch, can be large, and specific to one machine and network.
+logs/

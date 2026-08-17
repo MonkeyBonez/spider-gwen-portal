@@ -64,7 +64,7 @@ HTTP, so it needs a tunnel (`ngrok http 5173`) or an HTTPS dev server.
 | `T` | flip the transition timing (`gestural` ↔ `timed`) |
 | `R` | reset the switch counter and state machine |
 | `C` | connect / disconnect the Lucy stream |
-| `G` | save the session log (NDJSON) — same as the panel's "Save log" |
+| `G` | download a copy of the session log. In dev it is already being written to `portal/logs/` automatically |
 | `1`–`4` | pick the switch transition and play it immediately |
 
 ## Layout
@@ -264,10 +264,22 @@ that climbs is a buffer filling, which is a different and more fixable bug.
 
 ### Session log
 
-`G`, or "Save log" in the panel, writes an NDJSON file: **every `stats` sample
-the SDK emitted** (encode time, quality-limitation reason, jitter buffer, ICE
-path, decode time), plus connection diagnostics, prompt changes, switches and
-the camera settings actually granted — all on one clock.
+**Under `npm run dev` this is automatic.** Every session streams itself to
+`portal/logs/portal-<timestamp>.ndjson` as it runs — no keypress, nothing to
+remember, and a tab that reloaded or crashed still leaves its evidence behind.
+`G` (or "Save log") additionally downloads a copy, which is what you'd use
+outside dev; the endpoint only exists on the dev server.
+
+The file holds **every `stats` sample the SDK emitted** (encode time,
+quality-limitation reason, jitter buffer, ICE path, decode time), plus the SDK's
+own internal logging, connection diagnostics, prompt changes, switches and the
+camera settings actually granted — all on one clock.
+
+The header line records whether this browser can measure glass-to-glass at all.
+If `willMeasure` is `false`, `Δ g2g` is null for the whole run and every latency
+figure has silently fallen back to RTT — check that before trusting anything
+else in the file. Note that *having* `RTCRtpScriptTransform` isn't enough on
+Chromium; the SDK requires `createEncodedStreams` there.
 
 This exists because latency debugging is retrospective. The question is always
 "what was happening at the moment it felt bad", and by the time you notice, the

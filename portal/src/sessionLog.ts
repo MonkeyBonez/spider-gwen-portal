@@ -36,6 +36,13 @@ export class SessionLog {
   /** Mirror to the devtools console as well as the buffer. */
   echo = false;
 
+  /** Identifies this page load's file on disk. */
+  readonly sessionId = `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-${Math.random().toString(36).slice(2, 8)}`;
+  /** How many entries have already been shipped to the dev server. */
+  private flushed = 0;
+  private flushTimer = 0;
+  private endpoint: string | null = null;
+
   log(kind: string, data?: unknown): void {
     const entry: LogEntry = {
       t: Math.round(performance.now() - this.startedAt),
@@ -64,8 +71,67 @@ export class SessionLog {
 
   clear(): void {
     this.entries = [];
+    this.flushed = 0;
     this.startedAt = performance.now();
     this.startedIso = new Date().toISOString();
+  }
+
+  /**
+   * Stream the log to a file on disk via the dev server, so a run is never lost
+   * to a reload, a crash, or forgetting to save it — which is precisely the run
+   * that mattered. Dev only; there is no such endpoint in a real deployment.
+   *
+   * @see `sessionLogPlugin` in vite.config.ts, which writes `portal/logs/`.
+   */
+  startAutoFlush(endpoint: string, intervalMs = 2000): void {
+    this.endpoint = endpoint;
+    this.flushTimer = window.setInterval(() => void this.flush(), intervalMs);
+    // `pagehide` rather than `beforeunload`: it fires in the cases that one
+    // misses, and it is the last chance to ship the tail of the session.
+    window.addEventListener('pagehide', () => this.flush(true));
+    // A hidden tab gets its timers throttled hard, so flush on the way out too.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.flush(true);
+    });
+  }
+
+  stopAutoFlush(): void {
+    window.clearInterval(this.flushTimer);
+    this.endpoint = null;
+  }
+
+  /**
+   * Ship everything not yet written. `useBeacon` switches to `sendBeacon`,
+   * which survives the page going away where `fetch` would be cancelled.
+   */
+  private async flush(useBeacon = false): Promise<void> {
+    if (!this.endpoint) return;
+    const pending = this.entries.slice(this.flushed);
+    if (pending.length === 0) return;
+    // Mark as sent before awaiting, so a slow request can't cause the next tick
+    // to send the same entries twice.
+    this.flushed = this.entries.length;
+    const payload = JSON.stringify({
+      sessionId: this.sessionId,
+      header: this.flushed === pending.length ? this.header() : undefined,
+      lines: pending,
+    });
+    try {
+      if (useBeacon && navigator.sendBeacon) {
+        navigator.sendBeacon(this.endpoint, new Blob([payload], { type: 'application/json' }));
+      } else {
+        await fetch(this.endpoint, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: payload,
+          keepalive: useBeacon,
+        });
+      }
+    } catch {
+      // The dev server going away must never break the app. Rewind so the
+      // entries are retried on the next tick rather than silently dropped.
+      this.flushed -= pending.length;
+    }
   }
 
   /**
@@ -74,11 +140,16 @@ export class SessionLog {
    * because `jq`, `grep` and pandas all take it directly.
    */
   toNdjson(): string {
-    const header = {
+    return [this.header(), ...this.entries].map((e) => JSON.stringify(e)).join('\n') + '\n';
+  }
+
+  private header(): LogEntry {
+    return {
       t: 0,
       iso: this.startedIso,
       kind: 'session-log-header',
       data: {
+        sessionId: this.sessionId,
         userAgent: navigator.userAgent,
         // Which of the two g2g-capable transforms this browser has decides
         // whether latency numbers exist at all (PRD §2.3.1).
@@ -86,7 +157,6 @@ export class SessionLog {
         hardwareConcurrency: navigator.hardwareConcurrency,
       },
     };
-    return [header, ...this.entries].map((e) => JSON.stringify(e)).join('\n') + '\n';
   }
 
   download(): void {
@@ -104,18 +174,38 @@ export class SessionLog {
 }
 
 /**
- * Which WebRTC encoded-transform API this browser has — the same check the SDK
- * gates glass-to-glass measurement on. `none` means `Δ g2g` will read null
- * forever and the latency numbers in the log are RTT-only (PRD §2.3.1).
+ * Whether the SDK will measure glass-to-glass in this browser, mirroring its
+ * own `isFrameMetadataRuntimeSupported()` exactly.
  *
- * Neither property is in the DOM lib types yet, hence the casts.
+ * The subtlety worth preserving: **having `RTCRtpScriptTransform` is not the
+ * same as the SDK accepting it.** The SDK only counts that API on
+ * *non*-Chromium browsers, and requires `createEncodedStreams` on Chromium —
+ * which Chrome still has alongside it. Reporting "the browser has
+ * RTCRtpScriptTransform" would therefore claim measurement works on a Chrome
+ * that had dropped `createEncodedStreams`, when in fact g2g would be null and
+ * every latency number in the log would silently fall back to RTT.
+ *
+ * If `willMeasure` is ever false, latency debugging is blind and that is the
+ * first thing to fix (PRD §2.3.1).
+ *
+ * Neither API is in the DOM lib types, hence the casts.
  */
-function detectEncodedTransform(): string {
-  const w = globalThis as { RTCRtpScriptTransform?: unknown };
-  if (typeof w.RTCRtpScriptTransform !== 'undefined') return 'RTCRtpScriptTransform';
+function detectEncodedTransform(): Record<string, unknown> {
+  const ua = navigator.userAgent.toLowerCase();
+  const isChromium = /(?:chrome|chromium|crmo)\//.test(ua) && !/crios\//.test(ua);
+  const hasScriptTransform =
+    typeof (globalThis as { RTCRtpScriptTransform?: unknown }).RTCRtpScriptTransform !== 'undefined';
   const sender = RTCRtpSender?.prototype as { createEncodedStreams?: unknown } | undefined;
-  if (typeof sender?.createEncodedStreams !== 'undefined') return 'createEncodedStreams';
-  return 'none';
+  const receiver = RTCRtpReceiver?.prototype as { createEncodedStreams?: unknown } | undefined;
+  const hasInsertableStreams =
+    typeof sender?.createEncodedStreams !== 'undefined' &&
+    typeof receiver?.createEncodedStreams !== 'undefined';
+  return {
+    isChromium,
+    hasScriptTransform,
+    hasInsertableStreams,
+    willMeasure: (hasScriptTransform && !isChromium) || hasInsertableStreams,
+  };
 }
 
 /**
