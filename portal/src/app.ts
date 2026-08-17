@@ -483,7 +483,7 @@ export class App {
     const since = this.lucy.msSincePrompt(performance.now());
     const ack = this.lucy.promptAckMs;
     return {
-      lucy: this.lucy.phase + (this.lucy.frame ? '' : ' (no frames yet)'),
+      lucy: `${this.lucy.phase} · ${this.cfg.lucyCodec}${this.lucy.frame ? '' : ' (no frames yet)'}`,
       'Δ g2g': s.g2gMs != null ? `${Math.round(s.g2gMs)}ms (p90 ${fmtMs(s.p90Ms)}, n=${s.sampleCount})` : 'measuring…',
       ttff: fmtMs(s.ttffMs ?? this.lucy.localTtffMs),
 
@@ -610,18 +610,21 @@ export class App {
     // with nowhere to send it would just leak memory.
     const endpoint = import.meta.env.DEV ? '/__rec' : null;
     if (!endpoint) return;
-    const remote = this.lucy.remoteStream;
-    if (!remote) return;
     this.camRecorder = new StreamRecorder('camera', sessionLog.sessionId, endpoint);
     this.lucyRecorder = new StreamRecorder('lucy', sessionLog.sessionId, endpoint);
     this.camRecorder.start(this.stream);
 
-    // The remote track exists at connect but is still muted until the first
-    // frame decodes ~20ms later, and recording it in that state fails. Retry
-    // until it carries something rather than starting a file that is empty.
+    // Re-read `remoteStream` on **every** attempt rather than capturing it once.
+    // The SDK builds a *new* `MediaStream` object each time a track is
+    // subscribed (`new MediaStream(tracks)` in its media-channel) instead of
+    // mutating the existing one, so the object present at connect can be an
+    // audio-only stream that never gains a video track. Holding that reference
+    // meant retrying against a stream that could not possibly become ready —
+    // 40 attempts of `tracks: 0` while video was plainly playing on screen.
     const tryLucy = (attempt: number): void => {
       if (!this.lucyRecorder) return;
-      if (this.lucyRecorder.start(remote)) return;
+      const remote = this.lucy?.remoteStream;
+      if (remote && this.lucyRecorder.start(remote)) return;
       if (attempt >= 40) {
         sessionLog.log('record:gave-up', { name: 'lucy', attempts: attempt });
         return;
