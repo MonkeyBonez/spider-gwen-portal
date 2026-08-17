@@ -34,6 +34,12 @@ import { StreamRecorder } from './recorder';
 const PORTAL_FADE_MS = 120;
 /** EMA on d(gap)/dt — the raw derivative is far too noisy to threshold on. */
 const VELOCITY_ALPHA = 0.35;
+/**
+ * Ceiling on the auto-tracked delay. Past this the preview is unusable to
+ * perform against, and a Δ this large means something is wrong that a buffer
+ * should not paper over.
+ */
+const MAX_SYNC_MS = 1200;
 
 export interface Hud {
   status: HTMLElement;
@@ -86,6 +92,8 @@ export class App {
   private detectMsPeak = 0;
   /** Last time hands were seen, for the idle-disconnect cost guard. */
   private lastHandsAt = 0;
+  /** Delay currently applied, ms. Moves toward the target under a slew limit. */
+  private syncApplied = 0;
   /** Throttle for the HUD chip — it carries a live number now. */
   private nextChipAt = 0;
   /** Dimension index already requested from Lucy, to avoid a duplicate send. */
@@ -396,21 +404,23 @@ export class App {
     //
     // The price is a preview delayed by the same amount, which is why it is off
     // by default and worth A/B-ing rather than assuming (§2.3, option 4).
+    this.updateSyncDelay(dt);
+
     let base: CanvasImageSource = this.video;
     let shownPortal = rendered;
     let shownOpacity = this.opacity;
-    if (this.cfg.syncDelayMs > 0) {
+    if (this.syncApplied > 0) {
       const w = this.renderer.canvas.width;
       const h = this.renderer.canvas.height;
       this.delay.push(
         this.video, w, h, rendered, this.opacity, t,
-        this.cfg.syncDelayMs,
+        this.syncApplied,
         // The camera's interval, not the render loop's: the buffer stores one
         // copy per distinct camera frame, so that is what sets how many slots
         // a given delay needs. Our loop runs at 60fps against a 30fps camera.
         1000 / Math.max(1, this.cfg.captureFps),
       );
-      const s = this.delay.sample(t, this.cfg.syncDelayMs);
+      const s = this.delay.sample(t, this.syncApplied);
       if (s) {
         base = s.image;
         shownPortal = s.portal;
@@ -547,9 +557,9 @@ export class App {
             return `${pct}% (${how})`;
           })()
         : 'off (cut straight to stream)',
-      'sync Δ': this.cfg.syncDelayMs > 0
-        ? `${this.cfg.syncDelayMs}ms applied · ${Math.round(this.delay.capacityMs)}ms held (${this.delay.size}f)`
-        : 'off (live composite)',
+      'sync Δ': this.cfg.syncMode === 'off'
+        ? 'off (live composite)'
+        : `${this.cfg.syncMode} · ${Math.round(this.syncApplied)}ms applied · ${Math.round(this.delay.capacityMs)}ms held (${this.delay.size}f)`,
       ...(s.queue ? { queue: `${s.queue.position}/${s.queue.size}` } : {}),
       ...(this.lucy.error ? { 'lucy error': this.lucy.error } : {}),
     };
@@ -611,6 +621,41 @@ export class App {
       // Play it immediately so the variant can be judged the moment it is picked.
       this.playTransition();
     }
+  }
+
+  /**
+   * Move the applied delay toward whatever the current mode asks for.
+   *
+   * Deliberately continuous rather than a one-shot calibration at startup: Δ
+   * was measured climbing from 588ms to a 635ms plateau over ~30s, so a single
+   * early reading would lock in a value that is wrong and getting wronger. The
+   * slew limit is what keeps that tracking invisible — see `syncSlewMsPerSec`.
+   */
+  private updateSyncDelay(dt: number): void {
+    let target = 0;
+    if (this.cfg.syncMode === 'manual') {
+      target = this.cfg.syncDelayMs;
+    } else if (this.cfg.syncMode === 'auto') {
+      const stats = this.lucy?.stats;
+      // Wait for a few samples: the first g2g readings are noisy, and this
+      // drives what is on screen.
+      if (stats?.g2gMs != null && stats.sampleCount >= 20) {
+        target = Math.min(MAX_SYNC_MS, Math.max(0, stats.g2gMs));
+      } else {
+        // No measurement yet — hold whatever is applied rather than snapping to
+        // zero, which would undo a converged delay every time the stream blips.
+        target = this.syncApplied;
+      }
+    }
+
+    const step = this.cfg.syncSlewMsPerSec * dt;
+    const delta = target - this.syncApplied;
+    this.syncApplied += Math.max(-step, Math.min(step, delta));
+    if (Math.abs(target - this.syncApplied) < 1) this.syncApplied = target;
+
+    // Keep the slider honest under `auto`, so switching to `manual` freezes the
+    // current value instead of jumping to a stale one.
+    if (this.cfg.syncMode === 'auto') this.cfg.syncDelayMs = Math.round(this.syncApplied);
   }
 
   /**

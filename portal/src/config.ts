@@ -1,5 +1,6 @@
 import { CONTACT_MODES, DEFAULT_WORST_SIDE_BIAS, type ContactMode } from './geometry';
 import { LUCY_CODECS, type LucyCodec } from './lucyCodec';
+import { SYNC_MODES, type SyncMode } from './syncMode';
 import {
   TRANSITION_KINDS,
   TRANSITION_TIMINGS,
@@ -99,9 +100,35 @@ export interface Config {
   /** Peak rotation for the `twist` variant, degrees. */
   twistDegrees: number;
 
-  // --- sync (Phase 1 placeholder, §2.3) ------------------------------------
-  /** Delay applied to the raw feed + mask to align with Lucy's stream. */
+  // --- sync (§2.3 V2) -------------------------------------------------------
+  /**
+   * Where the compensation delay comes from.
+   *
+   * `auto` tracks the SDK's measured glass-to-glass figure continuously rather
+   * than sampling it once at startup. That matters: Δ was observed climbing
+   * from 588ms to a 635ms plateau over the first ~30 seconds of a session
+   * (2026-08-17), so a single early reading would calibrate ~50ms short and
+   * then drift further out as the session warmed up.
+   */
+  syncMode: SyncMode;
+  /**
+   * Delay applied to the raw feed + mask to align with Lucy's stream.
+   *
+   * Under `manual` this is the value used. Under `auto` it is overwritten with
+   * whatever is currently being applied, so the slider always shows the truth
+   * and switching to `manual` freezes the current value rather than jumping.
+   */
   syncDelayMs: number;
+  /**
+   * How fast the applied delay may change, ms per second.
+   *
+   * Changing it moves which buffered frame is shown, so an instant jump would
+   * skip or repeat frames visibly. Ramping means the preview runs fractionally
+   * slow while it converges — at 150ms/s that is a 15% time compression for a
+   * few seconds, which is far less noticeable than a jump, and it only happens
+   * at startup and on genuine drift.
+   */
+  syncSlewMsPerSec: number;
 
   // --- Lucy session (Phase 1, §3) ------------------------------------------
   /**
@@ -243,7 +270,9 @@ export const DEFAULT_CONFIG: Config = {
   reopenOvershoot: 1.1,
   twistDegrees: 90,
 
+  syncMode: 'auto',
   syncDelayMs: 0,
+  syncSlewMsPerSec: 150,
 
   idleDisconnectMs: 60_000,
   recordStreams: true,
@@ -310,6 +339,9 @@ export function loadConfig(): Config {
   }
   if (!LUCY_CODECS.includes(cfg.lucyCodec)) {
     cfg.lucyCodec = DEFAULT_CONFIG.lucyCodec;
+  }
+  if (!SYNC_MODES.includes(cfg.syncMode)) {
+    cfg.syncMode = DEFAULT_CONFIG.syncMode;
   }
   // Migration: `maxHoldMs` used to default to 2000, which reopened the portal on
   // a timer even while the hands were visibly still shut. Nobody ever chose that

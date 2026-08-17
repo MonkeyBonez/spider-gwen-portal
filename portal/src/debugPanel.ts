@@ -7,6 +7,7 @@
 import { resetConfig, saveConfig, type Config } from './config';
 import { sessionLog } from './sessionLog';
 import { LUCY_CODEC_BLURBS, LUCY_CODECS } from './lucyCodec';
+import { SYNC_BLURBS, SYNC_MODES } from './syncMode';
 import { CONTACT_BLURBS, CONTACT_MODES } from './geometry';
 import {
   TIMING_BLURBS,
@@ -81,7 +82,7 @@ const SLIDERS: SliderSpec[] = [
     step: 10,
     // Measured Δ was ~730ms on 2026-08-16, so the old 500 ceiling could not
     // reach alignment at all.
-    hint: '0 = live composite (seam mismatch) · match Δ g2g to align the portal with its contents',
+    hint: 'manual mode only — under auto this shows what is currently applied',
   },
   {
     key: 'revealHoldMs',
@@ -171,6 +172,7 @@ export class DebugPanel {
       this.select('transitionTiming', 'Transition timing', TRANSITION_TIMINGS, TIMING_BLURBS),
       // Applies on the next connect, not live — reconnect with C twice.
       this.select('lucyCodec', 'Lucy codec (on reconnect)', LUCY_CODECS, LUCY_CODEC_BLURBS),
+      this.select('syncMode', 'Sync compensation', SYNC_MODES, SYNC_BLURBS),
     );
 
     for (const spec of SLIDERS) this.el.append(this.slider(spec));
