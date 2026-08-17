@@ -20,6 +20,7 @@
 import type { RealTimeClient, WebRTCStats } from '@decartai/sdk';
 import { sessionLog } from './sessionLog';
 import type { LucyCodec } from './lucyCodec';
+import { SettleProbe } from './settleProbe';
 
 /**
  * `lucy-2.5` is 1280×720 @30fps, which is exactly our canonical canvas (PRD
@@ -149,6 +150,8 @@ export class LucySession {
   private lastPromptAckMs: number | null = null;
   /** `performance.now()` of the most recent prompt change, for a settle timer. */
   private lastPromptAt = 0;
+  /** Measures how long the output takes to visibly change after a prompt. */
+  private settle = new SettleProbe();
 
   constructor(opts: LucyOptions) {
     this.opts = opts;
@@ -329,6 +332,13 @@ export class LucySession {
     // read straight out of the file — "which one was on screen at t=42s" should
     // not require joining against the preceding `switch` entry.
     sessionLog.log('prompt:sent', { label, prompt });
+    // Start measuring the *visible* change, which is the number the gesture
+    // design actually depends on — the ack below is only the request landing.
+    if (this.frame) {
+      this.settle.start(this.frame, (samples) =>
+        sessionLog.log('prompt:settle', { label, samples }),
+      );
+    }
     try {
       await this.client.setPrompt(prompt, { enhance: false });
       this.lastPromptAckMs = performance.now() - at;
@@ -343,6 +353,7 @@ export class LucySession {
 
   disconnect(): void {
     sessionLog.log('lucy:disconnect', { billedSeconds: this.currentStats.secondsUsed });
+    this.settle.stop();
     this.client?.disconnect();
     this.client = null;
     this.videoEl.srcObject = null;

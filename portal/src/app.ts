@@ -28,6 +28,7 @@ import { CloseOpenTrigger } from './triggers/closeOpenTrigger';
 import type { GestureTrigger } from './triggers/types';
 import { LucySession, resolveApiKey } from './lucy';
 import { sessionLog } from './sessionLog';
+import { DelayBuffer } from './delayBuffer';
 
 const PORTAL_FADE_MS = 120;
 /** EMA on d(gap)/dt — the raw derivative is far too noisy to threshold on. */
@@ -55,6 +56,7 @@ export class App {
   private trigger: GestureTrigger = new CloseOpenTrigger();
   private transition = new PortalTransition();
   private gesturalTransition = new GesturalTransition();
+  private delay = new DelayBuffer();
 
   private video = document.createElement('video');
   private stream: MediaStream | null = null;
@@ -332,12 +334,41 @@ export class App {
       ? applyTransition(this.smoothed, transition, this.cfg.transitionKind)
       : null;
 
+    // Sync compensation (PRD §2.3 V2). Lucy's frames depict ~730ms ago, so to
+    // put all three layers on the same instant we hold the raw feed *and* the
+    // portal geometry back to match. Without it the window sits on the live
+    // hands while its contents show the past, and the transformed hands inside
+    // slide against the real hands bordering it — that seam is the artifact.
+    //
+    // The price is a preview delayed by the same amount, which is why it is off
+    // by default and worth A/B-ing rather than assuming (§2.3, option 4).
+    let base: CanvasImageSource = this.video;
+    let shownPortal = rendered;
+    let shownOpacity = this.opacity;
+    if (this.cfg.syncDelayMs > 0) {
+      const w = this.renderer.canvas.width;
+      const h = this.renderer.canvas.height;
+      this.delay.push(
+        this.video, w, h, rendered, this.opacity, t,
+        this.cfg.syncDelayMs,
+        this.fps > 1 ? 1000 / this.fps : 33,
+      );
+      const s = this.delay.sample(t, this.cfg.syncDelayMs);
+      if (s) {
+        base = s.image;
+        shownPortal = s.portal;
+        shownOpacity = s.opacity;
+      }
+    } else if (this.delay.size > 0) {
+      this.delay.reset();
+    }
+
     this.renderer.render(
       {
-        video: this.video,
+        video: base,
         hands,
-        portal: rendered,
-        opacity: this.opacity,
+        portal: shownPortal,
+        opacity: shownOpacity,
         fill: dimension.color,
         // Falls back to the flat colour whenever Lucy has nothing decoded —
         // cold start, a dropped connection, or camera-only mode. Same path.
@@ -438,6 +469,13 @@ export class App {
       'since prompt': since != null ? `${(since / 1000).toFixed(1)}s` : '—',
       billed: `${s.secondsUsed.toFixed(0)}s`,
       log: `${sessionLog.size} entries`,
+      // Whether compensation is actually delivering the delay it was asked
+      // for. A capacity below the request means the ring ran out of frames at
+      // this frame rate, and the composite is under-delayed rather than
+      // aligned — silently, unless it is shown.
+      'sync Δ': this.cfg.syncDelayMs > 0
+        ? `${this.cfg.syncDelayMs}ms applied · ${Math.round(this.delay.capacityMs)}ms held (${this.delay.size}f)`
+        : 'off (live composite)',
       ...(s.queue ? { queue: `${s.queue.position}/${s.queue.size}` } : {}),
       ...(this.lucy.error ? { 'lucy error': this.lucy.error } : {}),
     };

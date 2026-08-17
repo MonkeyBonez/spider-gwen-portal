@@ -27,7 +27,12 @@ const HAND_CONNECTIONS: [number, number][] = [
 ];
 
 export interface RenderInput {
-  video: HTMLVideoElement;
+  /**
+   * The base layer. Normally the live camera element; when sync compensation
+   * is on it is a delayed *copy* of it from the ring buffer, which is why this
+   * is the general image type rather than a video element (PRD §2.3 V2).
+   */
+  video: CanvasImageSource;
   hands: TrackedHands;
   /** Smoothed portal, or null when the portal should be hidden. */
   portal: PortalPoints | null;

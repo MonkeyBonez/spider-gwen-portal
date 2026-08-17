@@ -73,7 +73,16 @@ const SLIDERS: SliderSpec[] = [
   { key: 'reopenMs', label: 'Reopen', min: 0, max: 900, step: 10 },
   { key: 'reopenOvershoot', label: 'Reopen overshoot', min: 0, max: 3, step: 0.1, hint: '0 = no pop' },
   { key: 'twistDegrees', label: 'Twist°', min: 0, max: 360, step: 15, hint: 'twist variant only' },
-  { key: 'syncDelayMs', label: 'Sync Δ (Phase 1)', min: 0, max: 500, step: 10 },
+  {
+    key: 'syncDelayMs',
+    label: 'Sync Δ',
+    min: 0,
+    max: 1200,
+    step: 10,
+    // Measured Δ was ~730ms on 2026-08-16, so the old 500 ceiling could not
+    // reach alignment at all.
+    hint: '0 = live composite (seam mismatch) · match Δ g2g to align the portal with its contents',
+  },
   {
     key: 'idleDisconnectMs',
     label: 'Idle disconnect',
