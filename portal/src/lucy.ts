@@ -359,8 +359,8 @@ export class LucySession {
     if (this.frame) {
       this.settle.start(
         this.frame,
-        (samples, detectedAtMs) =>
-          sessionLog.log('prompt:settle', { label, detectedAtMs, samples }),
+        (samples, detectedAtMs, truncated) =>
+          sessionLog.log('prompt:settle', { label, detectedAtMs, truncated, samples }),
         () => {
           this.changeSeenAt = performance.now();
         },

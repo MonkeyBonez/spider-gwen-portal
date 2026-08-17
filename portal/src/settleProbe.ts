@@ -32,7 +32,10 @@ const H = 18;
 // 50ms rather than 100: this now gates the reveal, so the sampling period is
 // dead colour on screen. A 32×18 getImageData twice as often is nothing.
 const INTERVAL_MS = 50;
-const DURATION_MS = 6000;
+// 4s, down from 6: the change is detected inside a second and the plateau is
+// established well before this, and a shorter window means fewer measurements
+// lost to the next switch arriving mid-run.
+const DURATION_MS = 4000;
 
 /**
  * Frame-to-frame difference that counts as the restyle landing.
@@ -86,9 +89,14 @@ export class SettleProbe {
    */
   start(
     source: HTMLVideoElement,
-    onDone: (samples: SettleSample[], detectedAtMs: number | null) => void,
+    onDone: (samples: SettleSample[], detectedAtMs: number | null, truncated?: boolean) => void,
     onChange?: () => void,
   ): void {
+    // Hand back whatever the previous run gathered before discarding it. A
+    // switch arriving inside the window used to cancel the measurement
+    // silently: four switches in one run produced one curve, and the three
+    // fastest — the interesting ones — left no trace at all.
+    this.flushPartial();
     this.stop();
     const frame = this.grab(source);
     if (!frame) return;
@@ -100,6 +108,18 @@ export class SettleProbe {
     this.onDone = onDone as (samples: SettleSample[]) => void;
     this.onChange = onChange ?? null;
     this.timer = window.setInterval(() => this.tick(source), INTERVAL_MS);
+  }
+
+  /** Emit a truncated result, so an interrupted measurement is still recorded. */
+  private flushPartial(): void {
+    if (!this.onDone || this.samples.length === 0) return;
+    const done = this.onDone as (
+      samples: SettleSample[],
+      detectedAtMs: number | null,
+      truncated?: boolean,
+    ) => void;
+    done(this.samples, this.detectedAt, true);
+    this.onDone = null;
   }
 
   stop(): void {

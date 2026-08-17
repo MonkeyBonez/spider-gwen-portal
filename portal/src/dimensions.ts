@@ -15,11 +15,27 @@
  * it does not get tidied — not the capitalisation, not the missing "is a" in
  * `mask-only`. See `PROMPT_LIBRARY` below for the six-world set this replaced.
  *
- * The two halves now differ in more than phrasing: the first two describe only
- * the person, the second two also describe the scene behind them. That is worth
- * watching specifically, because the portal is a small window onto the frame —
- * a background clause competes for very few pixels, and may show up mostly as a
- * change in colour and light on the subject rather than as a visible setting.
+ * **Results, from the 2026-08-17 vp9 run** (frames pulled from the recorded Lucy
+ * stream, one per dimension):
+ *
+ * - `style-only` — restyles *him*: comic linework and flat colour on his real
+ *   face, real clothes, real room. No costume at all. So the subject clause is
+ *   what produces the suit; the technique words only change how it is drawn.
+ * - `style+subject` — the full comic-book spider suit, heavy ink outlines, flat
+ *   cel colour, room stylised to match. The most "animated Spider-Verse" of the
+ *   four, and the closest to the trend.
+ * - `multiverse` — a different thing entirely: photoreal game-cinematic render,
+ *   glossy suit, and a legibly high-tech environment. Naming no rendering
+ *   technique did not give a neutral result, it gave a 3D one. Keep it as a
+ *   *contrasting* dimension rather than a variant of the comic look.
+ * - `mask-only` — literal: the mask alone, over his real body, clothes and room.
+ *   The smallest transformation of the four.
+ *
+ * On scene clauses, the two behaved differently: "background is high tech"
+ * rendered clearly, "in a skyscraper" did not appear at all. The distinction
+ * looks like texture-vs-place — a style word can be applied across whatever is
+ * already in frame, whereas a specific location needs room the shot does not
+ * have, since the subject fills it.
  */
 
 export interface Dimension {
