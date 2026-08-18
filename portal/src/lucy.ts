@@ -296,6 +296,15 @@ export class LucySession {
     this.client.on('stats', (stats) => {
       sessionLog.log('stats', stats);
       const g = stats.glassToGlass;
+      const v = stats.video;
+      const o = stats.outboundVideo;
+      this.history.push({
+        g2g: g?.medianMs ?? null,
+        inFps: v?.framesPerSecond ?? null,
+        outFps: o?.framesPerSecond ?? null,
+        jitter: v?.jitterBufferTargetDelayMs ?? null,
+      });
+      if (this.history.length > 600) this.history.shift();
       this.currentStats = {
         ...this.currentStats,
         g2gMs: g?.medianMs ?? null,
@@ -328,6 +337,7 @@ export class LucySession {
       this.setPhase('error', err.message);
     });
 
+    this.connectedAt = performance.now();
     sessionLog.log('lucy:connected', {
       model: MODEL_NAME,
       codec: this.opts.codec,
@@ -346,6 +356,17 @@ export class LucySession {
   private changeSeenAt: number | null = null;
   /** When the server acked the last prompt, in `performance.now()` terms. */
   private ackedAt: number | null = null;
+  /** When the session connected, for the summary's elapsed time. */
+  private connectedAt = 0;
+  /**
+   * Per-tick history, for the end-of-session summary.
+   *
+   * Kept because comparing two sessions — passthrough against full model, or
+   * one codec against another — otherwise means re-deriving medians from the
+   * raw log every time. Capped at 600 entries, ~10 minutes at one stats tick
+   * per second.
+   */
+  private history: { g2g: number | null; inFps: number | null; outFps: number | null; jitter: number | null }[] = [];
 
   /**
    * When the server confirmed the last prompt, or null while it is still in
@@ -407,6 +428,25 @@ export class LucySession {
   }
 
   disconnect(): void {
+    // One line carrying everything a session comparison needs. `connectedSec`
+    // next to `billedSeconds` is the point under passthrough: if the stream ran
+    // for a minute and billed nothing, passthrough is free.
+    const med = (key: 'g2g' | 'inFps' | 'outFps' | 'jitter'): number | null => {
+      const vals = this.history.map((h) => h[key]).filter((v): v is number => v != null).sort((a, b) => a - b);
+      return vals.length ? Math.round(vals[Math.floor(vals.length / 2)]) : null;
+    };
+    sessionLog.log('lucy:summary', {
+      passthrough: this.opts.passthrough ?? false,
+      codec: this.opts.codec,
+      connectedSec: Math.round((performance.now() - this.connectedAt) / 1000),
+      billedSeconds: this.currentStats.secondsUsed,
+      g2gMedianMs: med('g2g'),
+      inboundFps: med('inFps'),
+      outboundFps: med('outFps'),
+      jitterMs: med('jitter'),
+      ttffMs: this.currentStats.ttffMs ?? this.localTtffMs,
+      samples: this.history.length,
+    });
     sessionLog.log('lucy:disconnect', { billedSeconds: this.currentStats.secondsUsed });
     this.settle.stop();
     this.client?.disconnect();
