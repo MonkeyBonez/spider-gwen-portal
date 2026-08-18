@@ -9,7 +9,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { overlayAt, TakeRecorder, type TakeFrame } from '../src/takeRecorder';
+import { overlayAt, TakeRecorder, timelineOffsetMs, type TakeFrame } from '../src/takeRecorder';
 import { emptyOverlayFrame, overlaysEmpty, type OverlayFrame } from '../src/overlay';
 
 /** A frame tagged with its time, so the one that came back is identifiable. */
@@ -147,5 +147,39 @@ describe('take timeline zero', () => {
     // 3 minutes after start() but only 2 after the first paint.
     expect(rec.overLimit(180_000)).toBe(false);
     expect(rec.overLimit(241_000)).toBe(true);
+  });
+});
+
+
+/**
+ * The video-clock correction (see the module header's Timebase section).
+ *
+ * Measured 2026-08-18: a take that painted for 5772ms produced a file whose
+ * frames span 5591ms, and the baked outline lagged the composite by the
+ * difference — the encoder drops time, mostly up front, and stamps its first
+ * surviving frame t=0. The correction adds the deficit back to every lookup.
+ */
+describe('timelineOffsetMs', () => {
+  it('is the gap between painted time and the file\'s own story', () => {
+    expect(timelineOffsetMs(5772, 5.591)).toBeCloseTo(181, 0);
+    expect(timelineOffsetMs(10_000, 10)).toBe(0);
+  });
+
+  it('never goes negative — a file longer than the take corrects nothing', () => {
+    expect(timelineOffsetMs(5000, 5.2)).toBe(0);
+  });
+
+  it('caps at 2s rather than silently shifting a broken take by seconds', () => {
+    // The measured worst case: a 15s take compacted to 9.2s under load. No
+    // constant honestly repairs that; visibly-a-little-off beats silently-huge.
+    expect(timelineOffsetMs(15_013, 9.232)).toBe(2000);
+  });
+
+  it('disables itself on non-finite or nonsense durations', () => {
+    // WebM reports Infinity until seeked to the end.
+    expect(timelineOffsetMs(5000, Infinity)).toBe(0);
+    expect(timelineOffsetMs(5000, NaN)).toBe(0);
+    expect(timelineOffsetMs(5000, 0)).toBe(0);
+    expect(timelineOffsetMs(5000, -3)).toBe(0);
   });
 });

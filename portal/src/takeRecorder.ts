@@ -37,11 +37,21 @@
  * `start()` call.
  *
  * Stamping overlay frames from `start()` put every one of them that lead-in
- * behind the video: about 5–7 frames at 30fps, constant for the whole take, and
- * plainly visible as an outline trailing the hands. Since the first painted
- * frame *is* the video's first frame, using it as the zero lines the two up by
- * construction — no clock correlation, no calibration pass, nothing to drift.
- * `leadInMs` in `take:stop` records what the gap was.
+ * behind the video, so frames are stamped from the first paint instead. But
+ * that alone is not enough, because **`MediaRecorder`'s timeline loses time**.
+ * Measured on 2026-08-18 by cross-correlating a baked outline against the
+ * composite it was drawn over: a take that painted for 5772ms produced a file
+ * whose frame timestamps span 5591ms — ~180ms missing, most of it up front
+ * (the encoder initialises on the first delivered frame, drops the paints that
+ * arrive meanwhile, and stamps its first *output* frame t=0) and the rest
+ * accumulating under load. Under heavy load it is not subtle: an export running
+ * beside the review player once compacted a 15s take into a 9.2s file.
+ *
+ * So the overlay clock (honest wall time) and the video clock (the encoder's
+ * story) genuinely disagree, by an amount that varies per take. The correction
+ * is `timelineOffsetMs` below: both ends are known — the take's wall duration
+ * here, the file's own duration once loaded — and their difference re-anchors
+ * lookups. `leadInMs` in `take:stop` records the recorder-start gap.
  *
  * ## Memory
  *
@@ -239,11 +249,14 @@ export class TakeRecorder {
   async stop(now: number): Promise<Take | null> {
     const recorder = this.recorder;
     if (!recorder) return null;
-    // Measured from the first paint, so it matches the file's own duration
-    // rather than the wall clock — the scrubber is drawn from this.
+    // Anchored paint-to-paint: from the first painted frame to the last one,
+    // because those are the two frames the file actually starts and ends with.
+    // `now` is when the button was pressed, which can trail the last paint.
     const zero = this.zeroAt();
-    const durationMs = now - zero;
+    const lastFrameT = this.frames.length > 0 ? this.frames[this.frames.length - 1].t : 0;
+    const durationMs = Math.max(lastFrameT, 1);
     const leadInMs = zero - this.startedAt;
+    void now;
     if (!this.stopped) {
       this.stopped = new Promise<void>((resolve) => {
         recorder.onstop = () => resolve();
@@ -328,4 +341,27 @@ export function overlayAt(
   let best = after;
   if (before && Math.abs(before.t - ms) < Math.abs(after.t - ms)) best = before;
   return Math.abs(best.t - ms) <= toleranceMs ? best.frame : null;
+}
+
+
+/**
+ * How far the video's clock trails the overlay's, for this take.
+ *
+ * `videoDurationSec` is the duration the file reports for itself once loaded;
+ * `takeDurationMs` is how long we actually painted. The file is the shorter of
+ * the two by however much time the encoder dropped (see the header), and since
+ * the loss is front-loaded, adding the difference to every lookup re-anchors
+ * the two timelines at both ends with ≤1 frame of residual in between.
+ *
+ * Clamped to [0, 2000]: a negative value would mean the file claims to be
+ * longer than the time we spent painting it, and past two seconds the take was
+ * recorded under such load that no constant can honestly repair it — better to
+ * be visibly a little off than to silently shift by seconds. Non-finite input
+ * (WebM reports Infinity until seeked) disables the correction rather than
+ * poisoning every lookup with NaN.
+ */
+export function timelineOffsetMs(takeDurationMs: number, videoDurationSec: number): number {
+  if (!Number.isFinite(videoDurationSec) || videoDurationSec <= 0) return 0;
+  const off = takeDurationMs - videoDurationSec * 1000;
+  return Math.min(2000, Math.max(0, off));
 }

@@ -25,7 +25,7 @@ import {
   overlaysEmpty,
   type OverlayLayers,
 } from './overlay';
-import { overlayAt, releaseTake, type Take } from './takeRecorder';
+import { overlayAt, releaseTake, timelineOffsetMs, type Take } from './takeRecorder';
 import { sessionLog } from './sessionLog';
 
 /**
@@ -162,6 +162,19 @@ export function showTakeReview(
   // uses the recorder's own measurement instead, which is known and exact.
   const durationMs = take.durationMs;
 
+  // The video's clock trails the overlay's (see `timelineOffsetMs`), so every
+  // lookup shifts by the difference between the two durations. Known only once
+  // the file has told us how long it thinks it is.
+  let timelineOffset = 0;
+  video.addEventListener('loadedmetadata', () => {
+    timelineOffset = timelineOffsetMs(take.durationMs, video.duration);
+    sessionLog.log('take:align', {
+      takeDurationMs: Math.round(take.durationMs),
+      videoDurationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : null,
+      offsetMs: Math.round(timelineOffset),
+    });
+  });
+
   let raf = 0;
   let vfc = 0;
   let paintFailed = false;
@@ -179,7 +192,7 @@ export function showTakeReview(
       // own clear — see `drawOverlay`, which does not clear for the export's
       // sake.
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const frame = overlayAt(take.frames, ms);
+      const frame = overlayAt(take.frames, ms + timelineOffset);
       if (frame) drawOverlay(ctx, frame, layers);
     } catch (err) {
       // A throw used to kill the loop permanently: `tick` calls `paint` before
@@ -271,6 +284,13 @@ export function showTakeReview(
       saveBtn.disabled = true;
       const wasPlaying = !video.paused;
       video.pause();
+      // Shed every frame of work this screen generates while the export runs.
+      // The export encodes 720p in real time; competing with the review's own
+      // paint loop for the main thread is how a 15s take once came back as a
+      // 9.2s file — the export encoder dropped frames and its muxer compacted
+      // the gaps out of the timeline.
+      cancelAnimationFrame(raf);
+      if (fcVideo && vfc) fcVideo.cancelVideoFrameCallback?.(vfc);
       const started = performance.now();
       try {
         const blob = await exportTake(take, layers, (pct) => {
@@ -291,6 +311,17 @@ export function showTakeReview(
       } finally {
         saveBtn.disabled = false;
         window.setTimeout(() => (saveBtn.textContent = 'Save video'), 2500);
+        // Resume the loops stopped above.
+        raf = requestAnimationFrame(tick);
+        if (fcVideo) {
+          const onFrame = (_now: number, meta: { mediaTime: number }): void => {
+            presentedMs = meta.mediaTime * 1000;
+            presentedAt = performance.now();
+            paint(presentedMs);
+            vfc = fcVideo.requestVideoFrameCallback!(onFrame);
+          };
+          vfc = fcVideo.requestVideoFrameCallback!(onFrame);
+        }
         if (wasPlaying) void video.play();
       }
     })();
@@ -338,6 +369,10 @@ export async function exportTake(
   const ctx = canvas.getContext('2d', { alpha: false });
   if (!ctx) throw new Error('2D canvas context unavailable');
 
+  // Same re-anchoring as the review player — the source file's clock trails
+  // the overlay clock by the recording's dropped time.
+  const timelineOffset = timelineOffsetMs(take.durationMs, video.duration);
+
   const mimeType = take.mimeType;
   const stream = canvas.captureStream(30);
   const recorder = new MediaRecorder(stream, {
@@ -357,7 +392,7 @@ export async function exportTake(
     // top of it. Clearing between the two is what produced an exported file of
     // nothing but the outline on black.
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const frame = overlayAt(take.frames, mediaMs);
+    const frame = overlayAt(take.frames, mediaMs + timelineOffset);
     if (frame) drawOverlay(ctx, frame, layers);
     onProgress?.(Math.min(1, mediaMs / Math.max(1, take.durationMs)));
   };
