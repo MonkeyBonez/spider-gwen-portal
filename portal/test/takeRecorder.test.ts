@@ -74,11 +74,12 @@ describe('overlaysEmpty', () => {
   // This is the export fast path: when nothing would be drawn, saving hands
   // back the recorded blob untouched instead of re-encoding it. A false
   // negative here costs a needless real-time render and a generation of
-  // quality; a false positive silently drops layers the user asked for.
+  // quality; a false positive silently drops the outline the user asked for.
   it('is true only when every layer is off', () => {
-    expect(overlaysEmpty({ edge: false, labels: false, landmarks: false })).toBe(true);
-    expect(overlaysEmpty({ edge: true, labels: false, landmarks: false })).toBe(false);
-    expect(overlaysEmpty({ edge: false, labels: true, landmarks: false })).toBe(false);
-    expect(overlaysEmpty({ edge: false, labels: false, landmarks: true })).toBe(false);
+    expect(overlaysEmpty({ portal: false, landmarks: false })).toBe(true);
+    expect(overlaysEmpty({ portal: true, landmarks: false })).toBe(false);
+    // `landmarks` is live-only and never set in review, but the fast path must
+    // still refuse to shortcut if anything at all would be drawn.
+    expect(overlaysEmpty({ portal: false, landmarks: true })).toBe(false);
   });
 });

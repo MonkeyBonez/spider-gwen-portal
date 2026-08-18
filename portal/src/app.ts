@@ -497,16 +497,13 @@ export class App {
     const overlayFrame = this.renderer.buildOverlayFrame(
       input,
       this.cfg,
-      // Landmarks are 21 points per hand at 60fps. Building them when nothing
-      // will ever read them is pure garbage collection.
-      this.cfg.showLandmarks || this.take.active,
+      // Landmarks are 21 points per hand at 60fps, they are live tuning only,
+      // and takes deliberately do not carry them. Building them when nothing
+      // will read them is pure garbage collection.
+      this.cfg.showLandmarks,
     );
     this.renderer.renderOverlay(overlayFrame, {
-      edge: this.cfg.showPolygonOutline,
-      // Corner names and confidence scores are instrumentation, so they follow
-      // the landmark toggle rather than the outline — `L` now hides all the
-      // text at once instead of leaving labels floating on a bare polygon.
-      labels: this.cfg.showLandmarks,
+      portal: this.cfg.showPolygonOutline,
       landmarks: this.cfg.showLandmarks,
     });
     this.recordTakeFrame(t, overlayFrame);
@@ -767,7 +764,10 @@ export class App {
 
   private recordTakeFrame(t: number, frame: OverlayFrame): void {
     if (!this.take.active) return;
-    this.take.pushFrame(t, frame);
+    // Takes carry only what review can draw, and review draws no landmarks. If
+    // they happen to be on for live tuning, they are dropped here rather than
+    // stored — 42 points a frame that nothing would ever read.
+    this.take.pushFrame(t, frame.hands.length > 0 ? { ...frame, hands: [] } : frame);
     if (this.take.overLimit(t)) {
       this.take.markTruncated();
       this.toast('Take length cap reached — here it is');

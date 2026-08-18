@@ -31,12 +31,11 @@ import { sessionLog } from './sessionLog';
 /**
  * Default layer selection.
  *
- * The edge is on because it is part of how the portal *looks* — the "device"
- * language of §1.1, not instrumentation. Labels and landmarks are off because
- * they are debug: useful to turn on when something looked wrong, never wanted
- * in something you post.
+ * The portal is on because it is part of how the thing *looks* — the "device"
+ * language of §1.1, not instrumentation. `landmarks` is live tuning only and is
+ * never recorded into a take, so it stays false here.
  */
-export const DEFAULT_LAYERS: OverlayLayers = { edge: true, labels: false, landmarks: false };
+export const DEFAULT_LAYERS: OverlayLayers = { portal: true, landmarks: false };
 
 /**
  * `requestVideoFrameCallback`, if this browser has it.
@@ -67,9 +66,7 @@ function frameCallbacks(video: HTMLVideoElement): FrameCallbackVideo | null {
 }
 
 const LAYER_ROWS: { key: keyof OverlayLayers; title: string; note: string }[] = [
-  { key: 'edge', title: 'Portal edge', note: 'outline, corner points, switch flash' },
-  { key: 'labels', title: 'Labels', note: 'corner names and hand confidence' },
-  { key: 'landmarks', title: 'Landmarks', note: 'MediaPipe hand skeletons' },
+  { key: 'portal', title: 'Portal outline', note: 'outline, corner points and labels' },
 ];
 
 export interface TakeReviewHandles {

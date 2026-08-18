@@ -63,25 +63,27 @@ export interface OverlayFrame {
 }
 
 /**
- * Which overlays to draw. Independent flags rather than one debug switch,
- * because the outline and the landmarks are different kinds of thing: the
- * outline is part of how the portal *looks*, the landmarks and labels are
- * instrumentation. The review player exposes that split directly.
+ * Which overlays to draw.
+ *
+ * Two flags, split by *audience* rather than by what is being drawn. `portal`
+ * is the whole portal as a thing you would show someone — outline, corner
+ * points and their labels together, because splitting them only ever produced
+ * combinations nobody wanted (labels floating on a bare polygon). `landmarks`
+ * is tuning instrumentation, live-only: takes never carry landmark data, so
+ * this is always false in review.
  */
 export interface OverlayLayers {
-  /** The portal outline and its corner dots. */
-  edge: boolean;
-  /** `L-idx` / `R-thm` corner text and the per-hand confidence readout. */
-  labels: boolean;
-  /** MediaPipe skeletons. */
+  /** Portal outline, corner dots, and the corner labels. */
+  portal: boolean;
+  /** MediaPipe skeletons and per-hand confidence. Live tuning only. */
   landmarks: boolean;
 }
 
-export const NO_OVERLAYS: OverlayLayers = { edge: false, labels: false, landmarks: false };
+export const NO_OVERLAYS: OverlayLayers = { portal: false, landmarks: false };
 
 /** True when nothing would be drawn — the export fast path checks this. */
 export function overlaysEmpty(layers: OverlayLayers): boolean {
-  return !layers.edge && !layers.labels && !layers.landmarks;
+  return !layers.portal && !layers.landmarks;
 }
 
 export function emptyOverlayFrame(): OverlayFrame {
@@ -100,10 +102,10 @@ export function drawOverlay(
   layers: OverlayLayers,
 ): void {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  if (frame.portal && frame.opacity > 0.01 && (layers.edge || layers.labels)) {
-    strokePortal(ctx, frame.portal, frame.outline, frame.opacity, layers);
+  if (frame.portal && frame.opacity > 0.01 && layers.portal) {
+    strokePortal(ctx, frame.portal, frame.outline, frame.opacity);
   }
-  if (layers.landmarks || layers.labels) drawHands(ctx, frame.hands, layers);
+  if (layers.landmarks) drawHands(ctx, frame.hands);
 }
 
 function strokePortal(
@@ -111,7 +113,6 @@ function strokePortal(
   pts: Pt[],
   outline: OverlayOutline,
   opacity: number,
-  layers: OverlayLayers,
 ): void {
   ctx.save();
   // The outline belongs to the portal, so it fades with it. Drawn at full
@@ -128,27 +129,21 @@ function strokePortal(
     ctx.shadowColor = outline.color;
     ctx.shadowBlur = outline.glow;
   }
-  if (layers.edge) {
-    ctx.stroke(pathOf(pts));
-    for (const p of pts) {
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 4 + outline.width * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  ctx.stroke(pathOf(pts));
+  for (const p of pts) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4 + outline.width * 0.5, 0, Math.PI * 2);
+    ctx.fill();
   }
-  if (layers.labels) {
-    ctx.shadowBlur = 0;
-    ctx.font = '600 14px ui-monospace, monospace';
-    pts.forEach((p, i) => ctx.fillText(CORNER_LABELS[i] ?? String(i), p.x + 8, p.y - 8));
-  }
+  // Labels unglowed — the glow is the switch flash, and smearing it across text
+  // makes the text the loudest thing in frame at exactly the wrong moment.
+  ctx.shadowBlur = 0;
+  ctx.font = '600 14px ui-monospace, monospace';
+  pts.forEach((p, i) => ctx.fillText(CORNER_LABELS[i] ?? String(i), p.x + 8, p.y - 8));
   ctx.restore();
 }
 
-function drawHands(
-  ctx: CanvasRenderingContext2D,
-  hands: OverlayHand[],
-  layers: OverlayLayers,
-): void {
+function drawHands(ctx: CanvasRenderingContext2D, hands: OverlayHand[]): void {
   ctx.save();
   ctx.lineWidth = 2;
   for (const hand of hands) {
@@ -157,24 +152,20 @@ function drawHands(
     const color = hand.label === 'Left' ? 'rgba(90,170,255,0.8)' : 'rgba(255,140,90,0.8)';
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    if (layers.landmarks) {
+    ctx.beginPath();
+    for (const [a, b] of HAND_CONNECTIONS) {
+      if (!pts[a] || !pts[b]) continue;
+      ctx.moveTo(pts[a].x, pts[a].y);
+      ctx.lineTo(pts[b].x, pts[b].y);
+    }
+    ctx.stroke();
+    for (const p of pts) {
       ctx.beginPath();
-      for (const [a, b] of HAND_CONNECTIONS) {
-        if (!pts[a] || !pts[b]) continue;
-        ctx.moveTo(pts[a].x, pts[a].y);
-        ctx.lineTo(pts[b].x, pts[b].y);
-      }
-      ctx.stroke();
-      for (const p of pts) {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fill();
     }
-    if (layers.labels) {
-      ctx.font = '600 16px ui-monospace, monospace';
-      ctx.fillText(`${hand.label} ${hand.score.toFixed(2)}`, pts[0].x + 10, pts[0].y + 20);
-    }
+    ctx.font = '600 16px ui-monospace, monospace';
+    ctx.fillText(`${hand.label} ${hand.score.toFixed(2)}`, pts[0].x + 10, pts[0].y + 20);
   }
   ctx.restore();
 }
