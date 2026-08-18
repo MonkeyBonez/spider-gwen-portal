@@ -14,7 +14,8 @@ import {
   type PortalPoints,
 } from './geometry';
 import { HandTracker } from './handTracking';
-import { Renderer, PORTAL_GREEN } from './renderer';
+import { Renderer } from './renderer';
+import { PORTAL_GREEN, type OverlayFrame } from './overlay';
 import { DebugPanel } from './debugPanel';
 import {
   GesturalTransition,
@@ -30,6 +31,8 @@ import { LucySession, resolveApiKey } from './lucy';
 import { sessionLog } from './sessionLog';
 import { DelayBuffer } from './delayBuffer';
 import { StreamRecorder } from './recorder';
+import { TakeRecorder } from './takeRecorder';
+import { showTakeReview } from './takePlayer';
 
 const PORTAL_FADE_MS = 120;
 /** EMA on d(gap)/dt — the raw derivative is far too noisy to threshold on. */
@@ -48,6 +51,10 @@ export interface Hud {
   toast: HTMLElement;
   /** Lucy connection state. Stays hidden in camera-only mode. */
   lucy: HTMLElement;
+  /** Recording indicator for the current take. */
+  take: HTMLElement;
+  /** Ends the take and opens the review player. */
+  endButton: HTMLButtonElement;
 }
 
 export interface AppOptions {
@@ -109,6 +116,15 @@ export class App {
    */
   private camRecorder: StreamRecorder | null = null;
   private lucyRecorder: StreamRecorder | null = null;
+  /**
+   * The take: the composite, recorded as the artifact the performer keeps
+   * (PRD §4.5). One encoder, on the picture — overlays ride along as data.
+   */
+  private take = new TakeRecorder();
+  /** Guards the async stop, so a double-press cannot end one take twice. */
+  private endingTake = false;
+  /** Throttle for the take chip's clock. */
+  private nextTakeChipAt = 0;
 
   private hud: Hud;
 
@@ -118,8 +134,16 @@ export class App {
 
     const canvas = document.createElement('canvas');
     canvas.className = 'stage';
-    root.append(canvas);
-    this.renderer = new Renderer(canvas);
+    // Overlays get their own transparent canvas stacked on top (PRD §4.2).
+    // Nothing but the picture is allowed into the composite, because the
+    // composite is what gets recorded — anything drawn there is burned into
+    // every exported video with no way to take it back out.
+    const overlay = document.createElement('canvas');
+    overlay.className = 'stage overlay';
+    root.append(canvas, overlay);
+    this.renderer = new Renderer(canvas, overlay);
+
+    hud.endButton.addEventListener('click', () => void this.endTake());
 
     this.panel = new DebugPanel(this.cfg, () => {
       this.switches = 0;
@@ -165,6 +189,8 @@ export class App {
 
     this.setStatus('');
     this.running = true;
+    // After `resize`, which is what gives the canvas a size to capture.
+    this.startTake();
     this.lastFrameAt = performance.now();
     this.lastHandsAt = performance.now();
     requestAnimationFrame((t) => this.loop(t));
@@ -177,6 +203,9 @@ export class App {
 
   stop(): void {
     this.running = false;
+    // Discarded rather than reviewed: `stop` is teardown — a closed tab, a
+    // failed start — and there is nobody left to show it to.
+    void this.take.stop(performance.now());
     this.stopRecording();
     this.lucy?.disconnect();
     this.lucy = null;
@@ -371,6 +400,12 @@ export class App {
     // — to the point of being counted by hand off screen recordings instead.
     // Frames alongside ms because that is how it gets checked against a 60fps
     // capture.
+    if (this.take.active && t >= this.nextTakeChipAt) {
+      this.nextTakeChipAt = t + 500;
+      const secs = Math.floor(this.take.elapsedMs(t) / 1000);
+      this.hud.take.textContent = `● ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    }
+
     if (this.lucy && t >= this.nextChipAt) {
       this.nextChipAt = t + 500;
       const d = this.lucy.stats.g2gMs;
@@ -441,21 +476,40 @@ export class App {
       this.delay.reset();
     }
 
-    this.renderer.render(
-      {
-        video: base,
-        hands,
-        portal: shownPortal,
-        opacity: shownOpacity,
-        fill: dimension.color,
-        // Falls back to the flat colour whenever Lucy has nothing decoded —
-        // cold start, a dropped connection, or camera-only mode. Same path.
-        source: this.lucy?.frame ?? null,
-        sourceAlpha: this.revealAlpha(t),
-        outline: this.outlineStyle(t, dimension.color),
-      },
+    const input = {
+      video: base,
+      hands,
+      portal: shownPortal,
+      opacity: shownOpacity,
+      fill: dimension.color,
+      // Falls back to the flat colour whenever Lucy has nothing decoded —
+      // cold start, a dropped connection, or camera-only mode. Same path.
+      source: this.lucy?.frame ?? null,
+      sourceAlpha: this.revealAlpha(t),
+      outline: this.outlineStyle(t, dimension.color),
+    };
+    this.renderer.render(input, this.cfg);
+
+    // Built once and used three times: drawn to the live overlay canvas, stored
+    // in the take's frame track, and — when the take is reviewed — redrawn from
+    // that track. One description, so the exported overlay is necessarily the
+    // one that was on screen rather than a re-derivation that can drift.
+    const overlayFrame = this.renderer.buildOverlayFrame(
+      input,
       this.cfg,
+      // Landmarks are 21 points per hand at 60fps. Building them when nothing
+      // will ever read them is pure garbage collection.
+      this.cfg.showLandmarks || this.take.active,
     );
+    this.renderer.renderOverlay(overlayFrame, {
+      edge: this.cfg.showPolygonOutline,
+      // Corner names and confidence scores are instrumentation, so they follow
+      // the landmark toggle rather than the outline — `L` now hides all the
+      // text at once instead of leaving labels floating on a bare polygon.
+      labels: this.cfg.showLandmarks,
+      landmarks: this.cfg.showLandmarks,
+    });
+    this.recordTakeFrame(t, overlayFrame);
 
     this.hud.dimension.textContent = `${this.dimensionIndex + 1}/${DIMENSIONS.length} · ${dimension.name}`;
     this.hud.dimension.style.color = dimension.color;
@@ -549,6 +603,11 @@ export class App {
       'since prompt': since != null ? `${(since / 1000).toFixed(1)}s` : '—',
       billed: `${s.secondsUsed.toFixed(0)}s`,
       log: `${sessionLog.size} entries`,
+      take: this.take.active
+        ? `recording · ${(this.take.elapsedMs(performance.now()) / 1000).toFixed(0)}s · ${this.take.frameCount} overlay frames`
+        : this.cfg.recordTake
+          ? 'idle'
+          : 'off',
       rec: this.camRecorder?.active
         ? `cam ${mb(this.camRecorder.bytesWritten)} · lucy ${mb(this.lucyRecorder?.bytesWritten ?? 0)}`
         : this.cfg.recordStreams
@@ -599,6 +658,8 @@ export class App {
     } else if (key === 'g') {
       sessionLog.download();
       this.toast(`saved ${sessionLog.size} log entries`);
+    } else if (key === 'e') {
+      void this.endTake();
     } else if (key === 'c') {
       // Manual connect/disconnect. Explicit rather than automatic, because the
       // session bills per second and camera-only is free.
@@ -682,6 +743,66 @@ export class App {
     // Keep the slider honest under `auto`, so switching to `manual` freezes the
     // current value instead of jumping to a stale one.
     if (this.cfg.syncMode === 'auto') this.cfg.syncDelayMs = Math.round(this.syncApplied);
+  }
+
+  /**
+   * Start recording a take, if takes are on and the browser can.
+   *
+   * Called at session start and again each time a review closes, so the loop is
+   * perform → end → review → straight back to recording, with no separate
+   * "record" step to remember. A take that cannot start is reported once and
+   * then left alone; the session itself is unaffected.
+   */
+  private startTake(): void {
+    if (!this.cfg.recordTake || !this.running || this.take.active) return;
+    if (this.take.start(this.renderer.canvas, performance.now())) {
+      this.hud.take.classList.remove('hidden');
+      this.hud.endButton.classList.remove('hidden');
+    } else {
+      this.hud.take.classList.add('hidden');
+      this.hud.endButton.classList.add('hidden');
+      this.toast('This browser cannot record takes');
+    }
+  }
+
+  private recordTakeFrame(t: number, frame: OverlayFrame): void {
+    if (!this.take.active) return;
+    this.take.pushFrame(t, frame);
+    if (this.take.overLimit(t)) {
+      this.take.markTruncated();
+      this.toast('Take length cap reached — here it is');
+      void this.endTake();
+    }
+  }
+
+  /**
+   * End the take and show it back.
+   *
+   * Lucy is deliberately left connected while the review is open. Disconnecting
+   * would save a few seconds of billing but cost a 4–5s cold start on the way
+   * back in, and the idle guard already covers the case that matters — nobody
+   * holds their hands up while reading a review screen, so `idleDisconnectMs`
+   * hangs up on its own if the screen is left open.
+   */
+  async endTake(): Promise<void> {
+    if (this.endingTake || !this.take.active) return;
+    this.endingTake = true;
+    this.hud.endButton.disabled = true;
+    let take = null;
+    try {
+      take = await this.take.stop(performance.now());
+    } finally {
+      this.endingTake = false;
+      this.hud.endButton.disabled = false;
+      this.hud.take.classList.add('hidden');
+      this.hud.endButton.classList.add('hidden');
+    }
+    if (!take) {
+      this.toast('Nothing was recorded');
+      this.startTake();
+      return;
+    }
+    showTakeReview(take, () => this.startTake());
   }
 
   /**

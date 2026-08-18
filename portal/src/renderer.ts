@@ -1,11 +1,20 @@
 /**
  * Canvas compositing (PRD §3).
  *
- * The composite is built the way Phase 1 will need it, so swapping the solid
- * colour for Lucy's <video> is a one-line change:
+ * Two canvases, stacked:
+ *
+ *   - **the composite** — camera feed, with Lucy's stream masked into the portal
+ *     polygon. This is the picture. It is what gets recorded and exported, and
+ *     nothing else is allowed into it.
+ *   - **the overlay** — outline, labels, landmarks, on a transparent canvas
+ *     above it (see overlay.ts). Preview-only, and reconstructible from data,
+ *     which is what makes layered export possible at all.
+ *
+ * The composite is built in four steps:
  *
  *   1. draw the raw camera feed to the main canvas
- *   2. paint the "other dimension" into an offscreen layer (colour now, Lucy later)
+ *   2. paint the "other dimension" into an offscreen layer (Lucy, or the flat
+ *      dimension colour before its first frame decodes)
  *   3. rasterise the portal polygon into an offscreen mask with an even-odd fill
  *      and an optional blur (the feather)
  *   4. `destination-in` the mask onto the layer, then draw the layer on top
@@ -16,18 +25,18 @@
 import type { Config } from './config';
 import { polygonOrder, type PortalPoints, type Pt } from './geometry';
 import type { TrackedHands } from './handTracking';
+import {
+  drawOverlay,
+  emptyOverlayFrame,
+  PORTAL_GREEN,
+  type OverlayFrame,
+  type OverlayLayers,
+  type OverlayOutline,
+} from './overlay';
 
-/** Resting outline colour — the portal's "nominal" state. */
-export const PORTAL_GREEN = 'rgba(0,255,180,0.9)';
-
-const HAND_CONNECTIONS: [number, number][] = [
-  [0, 1], [1, 2], [2, 3], [3, 4],
-  [0, 5], [5, 6], [6, 7], [7, 8],
-  [5, 9], [9, 10], [10, 11], [11, 12],
-  [9, 13], [13, 14], [14, 15], [15, 16],
-  [13, 17], [17, 18], [18, 19], [19, 20],
-  [0, 17],
-];
+// Re-exported so callers that only care about the resting colour do not have to
+// know where the overlay lives.
+export { PORTAL_GREEN };
 
 export interface RenderInput {
   /**
@@ -61,20 +70,24 @@ export interface RenderInput {
    * place the performer is already looking. Defaults preserve the original
    * fixed teal when nothing sets it.
    */
-  outline?: { color: string; width: number; glow?: number };
+  outline?: OverlayOutline;
 }
 
 export class Renderer {
   readonly canvas: HTMLCanvasElement;
+  readonly overlay: HTMLCanvasElement | null;
   private ctx: CanvasRenderingContext2D;
+  private overlayCtx: CanvasRenderingContext2D | null;
   private layer: HTMLCanvasElement;
   private layerCtx: CanvasRenderingContext2D;
   private mask: HTMLCanvasElement;
   private maskCtx: CanvasRenderingContext2D;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, overlay?: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = must(canvas.getContext('2d', { alpha: false }));
+    this.overlay = overlay ?? null;
+    this.overlayCtx = overlay ? must(overlay.getContext('2d')) : null;
     this.layer = document.createElement('canvas');
     this.layerCtx = must(this.layer.getContext('2d'));
     this.mask = document.createElement('canvas');
@@ -82,7 +95,8 @@ export class Renderer {
   }
 
   resize(w: number, h: number): void {
-    for (const c of [this.canvas, this.layer, this.mask]) {
+    const all = [this.canvas, this.layer, this.mask, ...(this.overlay ? [this.overlay] : [])];
+    for (const c of all) {
       if (c.width !== w || c.height !== h) {
         c.width = w;
         c.height = h;
@@ -90,6 +104,37 @@ export class Renderer {
     }
   }
 
+  /**
+   * The overlay for this frame, as data.
+   *
+   * Separate from drawing it because the same description feeds three
+   * consumers: the live overlay canvas, the take recorder's frame track, and —
+   * hours later — the review player. Building it once and handing the same
+   * object to all three is what guarantees the exported overlay is identical to
+   * the one that was on screen, rather than a re-derivation that can drift.
+   *
+   * `withHands` exists because landmarks are 21 points per hand per frame and
+   * the render loop runs at 60fps. Building them when nothing will read them is
+   * pure garbage.
+   */
+  buildOverlayFrame(input: RenderInput, cfg: Config, withHands: boolean): OverlayFrame {
+    const frame = emptyOverlayFrame();
+    frame.opacity = input.opacity;
+    frame.outline = input.outline ?? { color: PORTAL_GREEN, width: 2, glow: 0 };
+    if (input.portal) {
+      frame.portal = polygonOrder(input.portal).map((p) => this.toScreen(p, cfg));
+    }
+    if (withHands) {
+      frame.hands = input.hands.rawHands.map((h) => ({
+        label: h.label,
+        score: h.score,
+        points: h.points.map((p) => this.toScreen(p, cfg)),
+      }));
+    }
+    return frame;
+  }
+
+  /** Paint the composite. Overlays are **not** drawn here, by design. */
   render(input: RenderInput, cfg: Config): void {
     const { width: w, height: h } = this.canvas;
     const ctx = this.ctx;
@@ -146,75 +191,16 @@ export class Renderer {
       ctx.globalAlpha = input.opacity;
       ctx.drawImage(this.layer, 0, 0);
       ctx.restore();
-
-      if (cfg.showPolygonOutline) this.strokePortal(pts, input.outline);
     }
+  }
 
-    if (cfg.showLandmarks) this.drawLandmarks(input.hands, cfg);
+  /** Paint the live overlay canvas. No-op when the app supplied no overlay. */
+  renderOverlay(frame: OverlayFrame, layers: OverlayLayers): void {
+    if (this.overlayCtx) drawOverlay(this.overlayCtx, frame, layers);
   }
 
   private toScreen(p: Pt, cfg: Config): Pt {
     return cfg.mirror ? { x: this.canvas.width - p.x, y: p.y } : p;
-  }
-
-  private strokePortal(
-    pts: Pt[],
-    outline?: { color: string; width: number; glow?: number },
-  ): void {
-    const ctx = this.ctx;
-    const color = outline?.color ?? PORTAL_GREEN;
-    const width = outline?.width ?? 2;
-    const glow = outline?.glow ?? 0;
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    // Glow only while something is actually happening. Tying it to line width
-    // meant the outline glowed permanently, which drowned the flash it was
-    // supposed to make legible — a status light that is always lit says nothing.
-    if (glow > 0) {
-      ctx.shadowColor = color;
-      ctx.shadowBlur = glow;
-    }
-    ctx.stroke(pathOf(pts));
-    const labels = ['L-idx', 'R-idx', 'R-thm', 'L-thm'];
-    ctx.font = '600 14px ui-monospace, monospace';
-    ctx.fillStyle = color;
-    pts.forEach((p, i) => {
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 4 + width * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillText(labels[i], p.x + 8, p.y - 8);
-    });
-    ctx.restore();
-  }
-
-  private drawLandmarks(hands: TrackedHands, cfg: Config): void {
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.lineWidth = 2;
-    for (const hand of hands.rawHands) {
-      const pts = hand.points.map((p) => this.toScreen(p, cfg));
-      ctx.strokeStyle = hand.label === 'Left' ? 'rgba(90,170,255,0.8)' : 'rgba(255,140,90,0.8)';
-      ctx.beginPath();
-      for (const [a, b] of HAND_CONNECTIONS) {
-        ctx.moveTo(pts[a].x, pts[a].y);
-        ctx.lineTo(pts[b].x, pts[b].y);
-      }
-      ctx.stroke();
-      ctx.fillStyle = ctx.strokeStyle;
-      for (const p of pts) {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.font = '600 16px ui-monospace, monospace';
-      ctx.fillText(
-        `${hand.label} ${hand.score.toFixed(2)}`,
-        pts[0].x + 10,
-        pts[0].y + 20,
-      );
-    }
-    ctx.restore();
   }
 }
 

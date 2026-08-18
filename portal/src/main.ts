@@ -21,6 +21,8 @@ app.innerHTML = `
         <span class="chip" id="hud-dimension">—</span>
         <span class="chip muted" id="hud-counter">0 switches</span>
         <span class="chip muted hidden" id="hud-lucy">lucy: —</span>
+        <span class="chip rec hidden" id="hud-take">● 0:00</span>
+        <button class="end-take hidden" id="end-take">End &amp; review</button>
       </div>
       <div class="status hidden" id="status"></div>
       <div class="toast hidden" id="toast"></div>
@@ -48,9 +50,14 @@ app.innerHTML = `
         The Lucy stream bills per generation-second. Camera-only runs the whole
         gesture pipeline with a flat colour in the portal and costs nothing.
       </p>
+      <p class="muted small">
+        Everything is recorded. Press <strong>End &amp; review</strong> to watch
+        it back, choose which layers you want, and save the video.
+      </p>
 
       <p class="keys muted">
-      D debug panel · L landmarks · Space manual switch · R reset counters<br />
+      D debug panel · L landmarks · E end take &amp; review · Space manual switch<br />
+      R reset counters ·
       1–4 pick the switch transition · T flips the timing · C connect/disconnect Lucy
     </p>
       <p class="error hidden" id="error"></p>
@@ -94,6 +101,8 @@ async function launch(useLucy: boolean): Promise<void> {
       counter: document.querySelector<HTMLElement>('#hud-counter')!,
       toast: document.querySelector<HTMLElement>('#toast')!,
       lucy: document.querySelector<HTMLElement>('#hud-lucy')!,
+      take: document.querySelector<HTMLElement>('#hud-take')!,
+      endButton: document.querySelector<HTMLButtonElement>('#end-take')!,
     },
     { useLucy },
   );

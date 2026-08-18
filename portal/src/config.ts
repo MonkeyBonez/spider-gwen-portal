@@ -226,13 +226,26 @@ export interface Config {
    */
   idleDisconnectMs: number;
   /**
+   * Record the composite as a take, reviewable and exportable when the session
+   * ends (PRD §4.5). This is the product path — one encoder, on the picture.
+   *
+   * Overlays are *not* in it; they are recorded as data and redrawn at review
+   * time, so layer choices stay open after the fact without a second encoder.
+   */
+  recordTake: boolean;
+  /**
    * Record the camera and Lucy streams to `portal/logs/*.webm` for offline
    * analysis (dev server only — there is nowhere to write them otherwise).
    *
    * Both are recorded **raw and separately**, never the composite: the whole
    * point is to be able to measure the offset between them, which compositing
-   * destroys. Roughly 1–2MB per second per stream, so it is a debugging tool,
-   * not something to leave on.
+   * destroys. Roughly 1–2MB per second per stream.
+   *
+   * **Off by default, and it should stay off unless you are measuring.** These
+   * are two more video encoders on top of the take recorder, and encoders are
+   * not free: running this pair was measured on 2026-08-17 to drop outbound
+   * frame rate ~27 → ~20fps and add ~30ms to Δ. That is a real cost paid by
+   * whoever is performing, in exchange for evidence only a developer reads.
    */
   recordStreams: boolean;
 
@@ -257,6 +270,13 @@ export interface Config {
 /**
  * Current config schema. See `Config.schemaVersion`.
  *
+ * 5 → 6: takes arrive, and they are recorded with **one** encoder on the
+ * composite. `recordStreams` — two more encoders, for diagnostics — therefore
+ * flips off, because leaving it on would silently spend ~7fps and ~30ms of the
+ * performer's latency budget on evidence nobody is reading. Turn it back on by
+ * hand for a measurement run; the migration is keyed on the version, not the
+ * value, so it sticks.
+ *
  * 4 → 5: undo the temporary passthrough measurement defaults below. The
  * measurement is done (Δ 128ms passthrough vs 595ms full model), so passthrough
  * goes back to being a diagnostic you opt into, and recording back on.
@@ -271,7 +291,7 @@ export interface Config {
  * measured default to be applied, so this moves it once. Setting h264 by hand
  * afterwards sticks — the migration is keyed on the version, not the value.
  */
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 export const DEFAULT_CONFIG: Config = {
   captureWidth: 1280,
@@ -317,7 +337,8 @@ export const DEFAULT_CONFIG: Config = {
   warmUpBeforeReveal: true,
 
   idleDisconnectMs: 60_000,
-  recordStreams: true,
+  recordTake: true,
+  recordStreams: false,
   lucyCodec: 'vp9',
   lucyPassthrough: false,
 
@@ -399,6 +420,10 @@ export function loadConfig(): Config {
   if (storedVersion > 0 && storedVersion < 5) {
     cfg.lucyPassthrough = false;
     cfg.recordStreams = true;
+  }
+  if (storedVersion > 0 && storedVersion < 6) {
+    cfg.recordTake = true;
+    cfg.recordStreams = false;
   }
   cfg.schemaVersion = SCHEMA_VERSION;
   if (cfg.revealHoldMs === LEGACY_REVEAL_HOLD_MS && cfg.revealFadeMs === LEGACY_REVEAL_FADE_MS) {
