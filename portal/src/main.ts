@@ -104,7 +104,19 @@ async function launch(useLucy: boolean): Promise<void> {
       take: document.querySelector<HTMLElement>('#hud-take')!,
       endButton: document.querySelector<HTMLButtonElement>('#end-take')!,
     },
-    { useLucy },
+    {
+      useLucy,
+      // Closing the review screen ends the session; put the home screen back
+      // exactly as it was, ready to launch again.
+      onExit: () => {
+        instance = null;
+        lucyBtn.disabled = false;
+        cameraBtn.disabled = false;
+        lucyBtn.textContent = 'Start with Lucy';
+        cameraBtn.textContent = 'Camera only (free)';
+        startScreen.classList.remove('hidden');
+      },
+    },
   );
 
   try {

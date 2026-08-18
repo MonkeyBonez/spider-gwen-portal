@@ -60,6 +60,12 @@ export interface Hud {
 export interface AppOptions {
   /** Connect Lucy at start. False runs camera-only, which costs nothing. */
   useLucy?: boolean;
+  /**
+   * Called after the session has fully torn itself down — closing the review
+   * screen is the way out of a session, and this is how the start screen gets
+   * told to come back.
+   */
+  onExit?: () => void;
 }
 
 export class App {
@@ -93,6 +99,9 @@ export class App {
 
   private lucy: LucySession | null = null;
   private wantLucy: boolean;
+  private onExit: (() => void) | null;
+  /** Detaches the window-level key handler on destroy. */
+  private keyAbort = new AbortController();
   /** Next time to sample our own render rate into the session log. */
   private nextPerfLogAt = 0;
   /** Rolling max of `detectForVideo` cost, reset each time it is logged. */
@@ -131,6 +140,7 @@ export class App {
   constructor(root: HTMLElement, hud: Hud, options: AppOptions = {}) {
     this.hud = hud;
     this.wantLucy = options.useLucy ?? false;
+    this.onExit = options.onExit ?? null;
 
     const canvas = document.createElement('canvas');
     canvas.className = 'stage';
@@ -156,7 +166,9 @@ export class App {
     this.video.muted = true;
     this.video.autoplay = true;
 
-    window.addEventListener('keydown', (e) => this.onKey(e));
+    window.addEventListener('keydown', (e) => this.onKey(e), {
+      signal: this.keyAbort.signal,
+    });
   }
 
   async start(): Promise<void> {
@@ -199,6 +211,27 @@ export class App {
     // hands during Lucy's 4–5s cold start, not frozen behind it. The portal
     // shows its dimension colour until the first frame decodes.
     if (this.wantLucy) void this.connectLucy();
+  }
+
+  /**
+   * Tear the whole session down and leave the page as the start screen found
+   * it, so the next launch builds on a clean slate instead of stacking a
+   * second canvas and a second key handler on the first.
+   */
+  private destroy(): void {
+    this.stop();
+    this.keyAbort.abort();
+    this.panel.el.remove();
+    this.renderer.canvas.remove();
+    this.renderer.overlay?.remove();
+    window.clearTimeout(this.toastTimer);
+    for (const el of [this.hud.take, this.hud.endButton, this.hud.lucy, this.hud.toast, this.hud.status]) {
+      el.classList.add('hidden');
+    }
+    this.hud.dimension.textContent = '—';
+    this.hud.dimension.style.color = '';
+    this.hud.counter.textContent = '0 switches';
+    this.onExit?.();
   }
 
   stop(): void {
@@ -802,7 +835,10 @@ export class App {
       this.startTake();
       return;
     }
-    showTakeReview(take, () => this.startTake());
+    // Closing the review — Discard or Escape — ends the session and returns to
+    // the start screen, rather than dropping back into a live (and, with Lucy,
+    // billing) session behind a screen the person has just walked away from.
+    showTakeReview(take, () => this.destroy());
   }
 
   /**
