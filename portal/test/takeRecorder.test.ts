@@ -8,8 +8,8 @@
  * wrong — refusing to answer across a gap.
  */
 
-import { describe, expect, it } from 'vitest';
-import { overlayAt, type TakeFrame } from '../src/takeRecorder';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { overlayAt, TakeRecorder, type TakeFrame } from '../src/takeRecorder';
 import { emptyOverlayFrame, overlaysEmpty, type OverlayFrame } from '../src/overlay';
 
 /** A frame tagged with its time, so the one that came back is identifiable. */
@@ -81,5 +81,71 @@ describe('overlaysEmpty', () => {
     // `landmarks` is live-only and never set in review, but the fast path must
     // still refuse to shortcut if anything at all would be drawn.
     expect(overlaysEmpty({ portal: false, landmarks: true })).toBe(false);
+  });
+});
+
+
+/**
+ * The recording timeline's zero.
+ *
+ * `canvas.captureStream()` emits nothing until the canvas is modified, so the
+ * video's first frame is the first *paint*, not the `start()` call. Stamping
+ * overlay frames from `start()` therefore put all of them behind the video by
+ * however long the first render took — MediaPipe's first inference included,
+ * which made it hundreds of milliseconds. Sne saw it as the outline trailing
+ * the hands by 5–7 frames, constant for the whole take.
+ */
+describe('take timeline zero', () => {
+  const globals = globalThis as Record<string, unknown>;
+  const saved = globals.MediaRecorder;
+
+  beforeAll(() => {
+    globals.MediaRecorder = class {
+      static isTypeSupported(): boolean {
+        return true;
+      }
+      state = 'recording';
+      ondataavailable: unknown = null;
+      onerror: unknown = null;
+      start(): void {}
+      stop(): void {}
+    };
+  });
+  afterAll(() => {
+    globals.MediaRecorder = saved;
+  });
+
+  /** Enough of a canvas for the recorder to attach to. */
+  function fakeCanvas(): HTMLCanvasElement {
+    return {
+      width: 1280,
+      height: 720,
+      captureStream: () => ({ getTracks: () => [] }),
+    } as unknown as HTMLCanvasElement;
+  }
+
+  it('starts the clock at the first painted frame, not at start()', () => {
+    const rec = new TakeRecorder();
+    expect(rec.start(fakeCanvas(), 1000)).toBe(true);
+
+    // 400ms of lead-in with nothing painted: the recorder is running but the
+    // canvas is untouched, so the file has not begun.
+    expect(rec.elapsedMs(1400)).toBe(0);
+
+    rec.pushFrame(1400, emptyOverlayFrame());
+    // That first paint is the file's t=0, so the clock reads zero there...
+    expect(rec.elapsedMs(1400)).toBe(0);
+    // ...and one second of painting later reads one second, not 1.4.
+    expect(rec.elapsedMs(2400)).toBe(1000);
+    expect(rec.frameCount).toBe(1);
+  });
+
+  it('counts the length cap from the first paint too', () => {
+    const rec = new TakeRecorder();
+    rec.start(fakeCanvas(), 0);
+    rec.pushFrame(60_000, emptyOverlayFrame());
+    // 3 minutes after start() but only 2 after the first paint.
+    expect(rec.overLimit(180_000)).toBe(false);
+    expect(rec.overLimit(241_000)).toBe(true);
   });
 });

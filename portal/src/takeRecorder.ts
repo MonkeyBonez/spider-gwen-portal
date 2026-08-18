@@ -26,11 +26,22 @@
  *
  * ## Timebase
  *
- * `MediaRecorder` on a canvas stream starts its timeline at `start()`, so a
- * frame stamped `t` ms after that lands at `currentTime === t / 1000` in the
- * resulting file. Frame times are stored as that offset, which means the player
- * can look up an overlay straight from `video.currentTime` with no clock
- * correlation and nothing to drift.
+ * Frame times are measured from the **first painted frame**, not from
+ * `recorder.start()`, and that distinction is the whole of the alignment.
+ *
+ * `canvas.captureStream()` emits a frame only when the canvas is *modified*. We
+ * start recording as soon as the canvas has a size, but nothing is painted into
+ * it until the first pass of the render loop — which is also the first pass of
+ * MediaPipe, so it is slow. The recorder therefore sits idle for a lead-in of
+ * order 100–200ms, and the video's `t = 0` is the first paint rather than the
+ * `start()` call.
+ *
+ * Stamping overlay frames from `start()` put every one of them that lead-in
+ * behind the video: about 5–7 frames at 30fps, constant for the whole take, and
+ * plainly visible as an outline trailing the hands. Since the first painted
+ * frame *is* the video's first frame, using it as the zero lines the two up by
+ * construction — no clock correlation, no calibration pass, nothing to drift.
+ * `leadInMs` in `take:stop` records what the gap was.
  *
  * ## Memory
  *
@@ -110,6 +121,8 @@ export class TakeRecorder {
   private chunks: Blob[] = [];
   private frames: TakeFrame[] = [];
   private startedAt = 0;
+  /** When the first frame was actually painted — the video's true zero. */
+  private firstFrameAt = -1;
   private width = 0;
   private height = 0;
   private mimeType = '';
@@ -125,8 +138,20 @@ export class TakeRecorder {
     return this.frames.length;
   }
 
+  /** The instant the recording's timeline starts from. See the header. */
+  private zeroAt(): number {
+    return this.firstFrameAt >= 0 ? this.firstFrameAt : this.startedAt;
+  }
+
+  /**
+   * How long the *recording* is, which is zero until something has been
+   * painted. During the lead-in the recorder is running but the file has not
+   * begun, and reporting wall-clock time there would put the HUD clock ahead of
+   * the take it is counting.
+   */
   elapsedMs(now: number): number {
-    return this.active ? now - this.startedAt : 0;
+    if (!this.active || this.firstFrameAt < 0) return 0;
+    return now - this.firstFrameAt;
   }
 
   /**
@@ -164,6 +189,7 @@ export class TakeRecorder {
       this.frames = [];
       this.truncated = false;
       this.startedAt = now;
+      this.firstFrameAt = -1;
       this.width = canvas.width;
       this.height = canvas.height;
       this.mimeType = mimeType;
@@ -191,12 +217,14 @@ export class TakeRecorder {
   pushFrame(now: number, frame: OverlayFrame): void {
     if (!this.active) return;
     if (this.frames.length >= MAX_FRAMES) return;
-    this.frames.push({ t: now - this.startedAt, frame });
+    // The first paint is the video's first frame, so it is time zero for both.
+    if (this.firstFrameAt < 0) this.firstFrameAt = now;
+    this.frames.push({ t: now - this.firstFrameAt, frame });
   }
 
   /** True once the take has run past its ceiling and should be ended. */
   overLimit(now: number): boolean {
-    return this.active && now - this.startedAt >= MAX_TAKE_MS;
+    return this.active && now - this.zeroAt() >= MAX_TAKE_MS;
   }
 
   markTruncated(): void {
@@ -211,7 +239,11 @@ export class TakeRecorder {
   async stop(now: number): Promise<Take | null> {
     const recorder = this.recorder;
     if (!recorder) return null;
-    const durationMs = now - this.startedAt;
+    // Measured from the first paint, so it matches the file's own duration
+    // rather than the wall clock — the scrubber is drawn from this.
+    const zero = this.zeroAt();
+    const durationMs = now - zero;
+    const leadInMs = zero - this.startedAt;
     if (!this.stopped) {
       this.stopped = new Promise<void>((resolve) => {
         recorder.onstop = () => resolve();
@@ -248,6 +280,10 @@ export class TakeRecorder {
       frames: frames.length,
       mimeType,
       truncated: this.truncated,
+      // How long the recorder ran before anything was painted into the canvas.
+      // This used to be the overlay's alignment error, so it is worth watching:
+      // if it grows, the first render is getting slower.
+      leadInMs: Math.round(leadInMs),
     });
     return {
       blob,
