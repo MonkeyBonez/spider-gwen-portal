@@ -152,22 +152,33 @@ export function showTakeReview(
           ? 'VP8'
           : take.extension.toUpperCase();
     const rec = take.startedAtIso.slice(11, 19) + 'Z';
-    const items: [string, string][] = [
-      ['rec', rec],
-      ['res', `${take.width}×${take.height}`],
-      ['len', fmtTime(take.durationMs) + (take.truncated ? ' MAX' : '')],
-      ['size', `${(take.blob.size / 1e6).toFixed(1)}MB ${codec}`],
-      ['rate', `${bitrateMbps.toFixed(1)}Mb/s`],
-      ['geom', `${take.frames.length}f @ ${Math.round(geomHz)}Hz`],
-      ['portal', `${Math.round(uptime)}%`],
-      ['sync', offsetMs === null ? '—' : `+${Math.round(offsetMs)}ms`],
+    const items: [string, string, string][] = [
+      ['rec', rec, 'When this take started (UTC)'],
+      ['res', `${take.width}×${take.height}`, 'Recording resolution'],
+      [
+        'len',
+        fmtTime(take.durationMs) + (take.truncated ? ' MAX' : ''),
+        'Length of the take' + (take.truncated ? ' — hit the 3-minute cap' : ''),
+      ],
+      ['size', `${(take.blob.size / 1e6).toFixed(1)}MB ${codec}`, 'File size and video codec'],
+      ['rate', `${bitrateMbps.toFixed(1)}Mb/s`, 'Measured video bitrate'],
+      [
+        'geom',
+        `${take.frames.length}f @ ${Math.round(geomHz)}Hz`,
+        'Portal geometry track: frames recorded, and how many per second',
+      ],
+      ['portal', `${Math.round(uptime)}%`, 'Share of the take with the portal open on screen'],
+      [
+        'sync',
+        offsetMs === null ? '—' : `+${Math.round(offsetMs)}ms`,
+        'Clock correction aligning the overlay to the video timeline',
+      ],
     ];
     teleEl.innerHTML = items
-      .map(([k, v]) => `<span class="t"><em>${k}</em>${v}</span>`)
+      .map(([k, v, hint]) => `<span class="t" title="${hint}"><em>${k}</em>${v}</span>`)
       .join('');
   }
   renderTelemetry(null);
-  updateNote();
 
   for (const row of LAYER_ROWS) {
     const label = document.createElement('label');
@@ -178,20 +189,13 @@ export function showTakeReview(
     `;
     label.querySelector('input')!.addEventListener('change', (e) => {
       layers[row.key] = (e.target as HTMLInputElement).checked;
-      updateNote();
       paint();
       sessionLog.log('take:layer', { ...layers });
     });
     rows.append(label);
   }
 
-  function updateNote(): void {
-    // Silent in the default state; the only message worth interrupting with is
-    // that an overlaid save renders in real time rather than instantly.
-    noteEl.textContent = overlaysEmpty(layers)
-      ? ''
-      : `Overlays are drawn on save, so this one re-encodes in real time (~${Math.ceil(seconds)}s).`;
-  }
+
 
   // A canvas recording carries no duration in its container until it has been
   // seeked to the end, so `video.duration` is Infinity on load. The scrubber
