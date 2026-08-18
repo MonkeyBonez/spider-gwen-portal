@@ -31,11 +31,13 @@ import { sessionLog } from './sessionLog';
 /**
  * Default layer selection.
  *
- * The portal is on because it is part of how the thing *looks* — the "device"
- * language of §1.1, not instrumentation. `landmarks` is live tuning only and is
- * never recorded into a take, so it stays false here.
+ * Everything off: the default save is the clean composite, untouched and
+ * instant. The outline is a choice you make, not one you have to undo — and
+ * with nothing checked the save path returns the recorded blob as-is, so the
+ * default is also the highest-quality output. `landmarks` is live tuning only
+ * and is never recorded into a take.
  */
-export const DEFAULT_LAYERS: OverlayLayers = { portal: true, landmarks: false };
+export const DEFAULT_LAYERS: OverlayLayers = { portal: false, landmarks: false };
 
 /**
  * `requestVideoFrameCallback`, if this browser has it.
@@ -84,7 +86,6 @@ export function showTakeReview(
     <div class="review-panel">
       <header>
         <h2>Your take</h2>
-        <span class="muted small" id="rv-meta"></span>
       </header>
       <div class="review-stage">
         <video id="rv-video" playsinline muted loop></video>
@@ -108,6 +109,7 @@ export function showTakeReview(
         <button id="rv-discard" class="secondary">Discard</button>
         <button id="rv-save">Save video</button>
       </footer>
+      <div class="review-telemetry" id="rv-tele"></div>
     </div>
   `;
   document.body.append(root);
@@ -118,7 +120,7 @@ export function showTakeReview(
   const playBtn = root.querySelector<HTMLButtonElement>('#rv-play')!;
   const seek = root.querySelector<HTMLInputElement>('#rv-seek')!;
   const timeEl = root.querySelector<HTMLElement>('#rv-time')!;
-  const metaEl = root.querySelector<HTMLElement>('#rv-meta')!;
+  const teleEl = root.querySelector<HTMLElement>('#rv-tele')!;
   const noteEl = root.querySelector<HTMLElement>('#rv-note')!;
   const saveBtn = root.querySelector<HTMLButtonElement>('#rv-save')!;
   const discardBtn = root.querySelector<HTMLButtonElement>('#rv-discard')!;
@@ -129,10 +131,42 @@ export function showTakeReview(
   video.src = take.url;
 
   const seconds = take.durationMs / 1000;
-  metaEl.textContent =
-    `${take.width}×${take.height} · ${fmtTime(take.durationMs)} · ` +
-    `${(take.blob.size / 1e6).toFixed(1)}MB ${take.extension}` +
-    (take.truncated ? ' · hit the length cap' : '');
+
+  /**
+   * The readout strip along the bottom. Every value is real and computed from
+   * this take — resolution, wall-clock start, measured bitrate, the overlay
+   * geometry track's density, how much of the take had a portal on screen, and
+   * the clock correction being applied (`—` until the file has reported its
+   * own duration). Styled as instrumentation because it is instrumentation.
+   */
+  function renderTelemetry(offsetMs: number | null): void {
+    const bitrateMbps = (take.blob.size * 8) / Math.max(1, take.durationMs) / 1000;
+    const geomHz = take.frames.length / Math.max(0.001, seconds);
+    const visible = take.frames.filter((f) => f.frame.portal && f.frame.opacity > 0.5).length;
+    const uptime = take.frames.length > 0 ? (visible / take.frames.length) * 100 : 0;
+    const codec = take.mimeType.includes('avc1')
+      ? 'H.264'
+      : take.mimeType.includes('vp9')
+        ? 'VP9'
+        : take.mimeType.includes('vp8')
+          ? 'VP8'
+          : take.extension.toUpperCase();
+    const rec = take.startedAtIso.slice(11, 19) + 'Z';
+    const items: [string, string][] = [
+      ['rec', rec],
+      ['res', `${take.width}×${take.height}`],
+      ['len', fmtTime(take.durationMs) + (take.truncated ? ' MAX' : '')],
+      ['size', `${(take.blob.size / 1e6).toFixed(1)}MB ${codec}`],
+      ['rate', `${bitrateMbps.toFixed(1)}Mb/s`],
+      ['geom', `${take.frames.length}f @ ${Math.round(geomHz)}Hz`],
+      ['portal', `${Math.round(uptime)}%`],
+      ['sync', offsetMs === null ? '—' : `+${Math.round(offsetMs)}ms`],
+    ];
+    teleEl.innerHTML = items
+      .map(([k, v]) => `<span class="t"><em>${k}</em>${v}</span>`)
+      .join('');
+  }
+  renderTelemetry(null);
   updateNote();
 
   for (const row of LAYER_ROWS) {
@@ -152,8 +186,10 @@ export function showTakeReview(
   }
 
   function updateNote(): void {
+    // Silent in the default state; the only message worth interrupting with is
+    // that an overlaid save renders in real time rather than instantly.
     noteEl.textContent = overlaysEmpty(layers)
-      ? 'No overlays — saving hands back the original recording untouched, instantly.'
+      ? ''
       : `Overlays are drawn on save, so this one re-encodes in real time (~${Math.ceil(seconds)}s).`;
   }
 
@@ -173,6 +209,7 @@ export function showTakeReview(
       videoDurationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : null,
       offsetMs: Math.round(timelineOffset),
     });
+    renderTelemetry(timelineOffset);
   });
 
   let raf = 0;
