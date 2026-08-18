@@ -15,10 +15,19 @@ to find. Phase 0 signed off 2026-08-16; Phase 1 built and measured 2026-08-17.
 | 4 | **Visual language / positioning** (§1.1) | Undecided, and #3 cannot be designed without it. |
 | 5 | **BYO key + public repo** (Phase 2) | Mostly built — the start screen already takes a key into localStorage. Needs a root README, a licence, a cost warning, and a decision to make the repo public. |
 
-**Known and unowned:** Lucy burns an **"AI Generated" watermark** into its output (seen in
-recordings, moves position, nothing in the SDK controls it) — it will be inside the portal in
-every export. Safari has never been run (§3.1 P1). Both need raising with Decart or testing
-before anyone else uses this.
+**The "AI Generated" watermark is key-dependent.** It was visible burned into Lucy's output in
+the 2026-08-17 recordings (moving position, nothing in the SDK controlling it), but Sne holds a
+key from Decart that disables it, so it is not a problem for our own runs.
+
+**It is a problem for the BYO-key plan, though, and that is the harder half.** If the repo is
+public and people bring their own keys, *their* output carries the watermark inside the portal —
+the exact centre of frame, in every video they make. Options, none free: ask Decart what tier or
+arrangement removes it; treat a watermark-free key as something users must obtain themselves and
+say so up front; or accept it and design the portal so the mark falls somewhere tolerable. Worth
+settling before publishing the repo, because it changes what the project is worth to a stranger.
+
+**Untested:** Safari has never been run (§3.1 P1) — its `MediaRecorder` and canvas behaviour is
+exactly where the export path is most likely to break.
 
 **Owner:** Sne
 **Last updated:** 2026-08-17
