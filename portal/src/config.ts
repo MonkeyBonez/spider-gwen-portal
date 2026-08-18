@@ -129,6 +129,21 @@ export interface Config {
    * at startup and on genuine drift.
    */
   syncSlewMsPerSec: number;
+  /**
+   * Keep the portal on its dimension colour until the pipeline is calibrated —
+   * Δ measured and the compensation delay converged — then fade the stream in.
+   *
+   * Without this the first few seconds are the worst the effect ever looks: the
+   * stream appears immediately, but Δ is not measurable for ~2s (the SDK
+   * excludes the start of a stream from its own average) and the delay is still
+   * ramping, so the seam slides visibly before settling. Waiting costs a few
+   * seconds of coloured portal and buys a correct first impression.
+   *
+   * In the product this wait is free: §4.3's tutorial takes far longer than the
+   * pipeline needs, so the calibration hides entirely inside teaching the
+   * gesture (Sne's idea).
+   */
+  warmUpBeforeReveal: boolean;
 
   // --- Lucy session (Phase 1, §3) ------------------------------------------
   /**
@@ -273,6 +288,7 @@ export const DEFAULT_CONFIG: Config = {
   syncMode: 'auto',
   syncDelayMs: 0,
   syncSlewMsPerSec: 150,
+  warmUpBeforeReveal: true,
 
   idleDisconnectMs: 60_000,
   recordStreams: true,

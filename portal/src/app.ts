@@ -94,6 +94,8 @@ export class App {
   private lastHandsAt = 0;
   /** Delay currently applied, ms. Moves toward the target under a slew limit. */
   private syncApplied = 0;
+  /** When the pipeline first read as calibrated, for the warm-up fade-in. */
+  private calibratedAt: number | null = null;
   /** Throttle for the HUD chip — it carries a live number now. */
   private nextChipAt = 0;
   /** Dimension index already requested from Lucy, to avoid a duplicate send. */
@@ -232,6 +234,7 @@ export class App {
 
   disconnectLucy(reason = 'disconnected'): void {
     if (!this.lucy) return;
+    this.calibratedAt = null;
     this.stopRecording();
     this.lucy.disconnect();
     this.lucy = null;
@@ -368,7 +371,12 @@ export class App {
     if (this.lucy && t >= this.nextChipAt) {
       this.nextChipAt = t + 500;
       const d = this.lucy.stats.g2gMs;
-      const delta = d != null ? ` · ${Math.round(d)}ms (${Math.round((d / 1000) * 60)}f)` : ' · measuring…';
+      const delta =
+        this.calibratedAt === null && this.cfg.warmUpBeforeReveal
+          ? ' · calibrating…'
+          : d != null
+            ? ` · ${Math.round(d)}ms (${Math.round((d / 1000) * 60)}f)`
+            : ' · measuring…';
       this.setLucyChip(`${this.lucy.phase} · ${this.cfg.lucyCodec}${delta}`, this.lucy.phase);
     }
 
@@ -649,6 +657,20 @@ export class App {
       }
     }
 
+    // Calibrated = Δ is being measured *and* the applied delay has caught up
+    // with it. Both halves matter: a measurement we have not finished acting on
+    // still shows a sliding seam.
+    const measuring = this.cfg.syncMode !== 'auto' || (this.lucy?.stats.sampleCount ?? 0) >= 20;
+    const converged = Math.abs(target - this.syncApplied) < 25;
+    if (measuring && converged && this.calibratedAt === null && this.lucy?.frame) {
+      this.calibratedAt = performance.now();
+      sessionLog.log('sync:calibrated', {
+        appliedMs: Math.round(this.syncApplied),
+        g2gMs: this.lucy?.stats.g2gMs ?? null,
+        samples: this.lucy?.stats.sampleCount ?? 0,
+      });
+    }
+
     const step = this.cfg.syncSlewMsPerSec * dt;
     const delta = target - this.syncApplied;
     this.syncApplied += Math.max(-step, Math.min(step, delta));
@@ -767,6 +789,14 @@ export class App {
    * behind a reveal nobody asked for.
    */
   private revealAlpha(t: number): number {
+    // Warm-up gate: hold the colour until the pipeline is calibrated, then fade
+    // in. Applied before the switch reveal because it is a different question —
+    // "is this worth showing yet" rather than "has the new dimension arrived".
+    if (this.cfg.warmUpBeforeReveal && this.lucy) {
+      if (this.calibratedAt === null) return 0;
+      const warm = Math.min(1, (t - this.calibratedAt) / 400);
+      if (warm < 1) return warm;
+    }
     if (!this.cfg.revealFromColor || this.promptRequestedAt <= 0) return 1;
 
     // Preferred: start fading the moment the restyle is actually on screen, so

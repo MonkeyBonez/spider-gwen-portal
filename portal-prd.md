@@ -558,6 +558,38 @@ happens to also fit the gesture thresholds, which needs no model and no network.
 first-time user sees, so it cannot be built in a placeholder visual language.
 Decide A vs B before designing it, not during.
 
+**The tutorial is also where the pipeline warms up and calibrates** (Sne's idea,
+2026-08-17). It is not just that the wait is tolerable here — it is that the
+tutorial needs *more* time than the pipeline does, so the calibration disappears
+into it entirely:
+
+| What has to happen | How long |
+| --- | --- |
+| Connect and first frame | ~1–1.5s (TTFF measured) |
+| Decart's own warm-up exclusion before Δ is measurable at all | 2s after the first frame |
+| Enough Δ samples to trust, and the compensation delay to converge | ~5–8s more |
+| Δ's own climb toward its steady value (~588 → 635ms observed) | ~20s to fully show |
+
+Teaching two held positions and rehearsing a few cycles takes longer than that.
+So by the time the user is ready for a real take, Δ is measured, the delay is
+converged, and the model is warm — **and their first take is the effect at its
+best rather than at its worst.** Without this the opening seconds are the worst
+it ever looks: the stream appears before Δ can be measured, so the seam visibly
+slides while the compensation ramps in.
+
+Implemented ahead of the tutorial as `warmUpBeforeReveal`: the portal holds its
+dimension colour until calibrated, then fades the stream in.
+
+**Cost, and the `passthrough` question.** The stream bills per generation-second,
+so warming during a 20s tutorial costs 20s of generation. The SDK exposes a
+`passthrough` connect flag (defaulted on when no initial state is set), which
+appears to relay video without running the model — attractive for warming the
+transport cheaply. **But it cannot calibrate Δ**, because inference is ~85% of
+Δ and passthrough is precisely the mode that omits it. So passthrough could warm
+the connection during the *early* tutorial steps, with the last ~10s switched to
+real generation to measure Δ. Verify what passthrough actually bills before
+designing around it.
+
 **The flow, in order.** Structure it as **two named, held positions** rather than
 "do the gesture a few times" (Sne's idea) — it is a two-part shape, so teaching it as
 two shapes is clearer than demonstrating a motion, and holding each one gives us a

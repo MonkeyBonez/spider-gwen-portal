@@ -117,6 +117,7 @@ const TOGGLES: { key: BoolKeys; label: string }[] = [
   { key: 'swapHandedness', label: 'Swap L/R hands' },
   { key: 'revealFromColor', label: 'Reveal from colour' },
   { key: 'recordStreams', label: 'Record raw streams (dev)' },
+  { key: 'warmUpBeforeReveal', label: 'Wait for calibration before revealing' },
 ];
 
 export interface Readouts {
