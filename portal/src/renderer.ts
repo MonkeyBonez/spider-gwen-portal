@@ -50,6 +50,15 @@ export interface RenderInput {
    * through underneath — this is the reveal cross-fade (PRD §4.1).
    */
   sourceAlpha?: number;
+  /**
+   * Colour and weight of the portal outline and its corner points.
+   *
+   * The outline doubles as the session's status light (PRD §1.1's "device"
+   * direction): it reports where a dimension switch has got to, in the one
+   * place the performer is already looking. Defaults preserve the original
+   * fixed teal when nothing sets it.
+   */
+  outline?: { color: string; width: number };
 }
 
 export class Renderer {
@@ -135,7 +144,7 @@ export class Renderer {
       ctx.drawImage(this.layer, 0, 0);
       ctx.restore();
 
-      if (cfg.showPolygonOutline) this.strokePortal(pts);
+      if (cfg.showPolygonOutline) this.strokePortal(pts, input.outline);
     }
 
     if (cfg.showLandmarks) this.drawLandmarks(input.hands, cfg);
@@ -145,18 +154,24 @@ export class Renderer {
     return cfg.mirror ? { x: this.canvas.width - p.x, y: p.y } : p;
   }
 
-  private strokePortal(pts: Pt[]): void {
+  private strokePortal(pts: Pt[], outline?: { color: string; width: number }): void {
     const ctx = this.ctx;
+    const color = outline?.color ?? 'rgba(0,255,180,0.9)';
+    const width = outline?.width ?? 2;
     ctx.save();
-    ctx.strokeStyle = 'rgba(0,255,180,0.9)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    // A glow proportional to the weight, so the ack flash reads as the frame
+    // energising rather than just thickening. Cheap: one shadowed stroke.
+    ctx.shadowColor = color;
+    ctx.shadowBlur = width * 3;
     ctx.stroke(pathOf(pts));
     const labels = ['L-idx', 'R-idx', 'R-thm', 'L-thm'];
     ctx.font = '600 14px ui-monospace, monospace';
-    ctx.fillStyle = 'rgba(0,255,180,0.95)';
+    ctx.fillStyle = color;
     pts.forEach((p, i) => {
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 3 + width, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillText(labels[i], p.x + 8, p.y - 8);
     });

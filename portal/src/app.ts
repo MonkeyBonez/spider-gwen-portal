@@ -441,6 +441,7 @@ export class App {
         // cold start, a dropped connection, or camera-only mode. Same path.
         source: this.lucy?.frame ?? null,
         sourceAlpha: this.revealAlpha(t),
+        outline: this.outlineStyle(t, dimension.color),
       },
       this.cfg,
     );
@@ -703,6 +704,46 @@ export class App {
   }
 
   /**
+   * Colour and weight of the portal outline, used as the switch's status light
+   * (PRD §1.1, the "device" direction — instrumentation styled as part of the
+   * fiction rather than bolted on).
+   *
+   * It reports the three states a dimension switch passes through, in the one
+   * place the performer is already looking:
+   *
+   * - **in flight** — request sent, no ack yet. Neutral white, thin. Something
+   *   is happening but nothing is confirmed.
+   * - **acked** — the server has the prompt. Snaps to the *new* dimension's
+   *   colour with a short bright flash, so the confirmation is felt rather than
+   *   read. This is the moment Sne asked for.
+   * - **landed** — the pixels have actually changed (detected, not timed).
+   *   Settles to a steady outline in that colour.
+   *
+   * Note the ack and the landing are genuinely different events ~500ms apart,
+   * so this is not one transition dressed up as three.
+   */
+  private outlineStyle(t: number, dimensionColor: string): { color: string; width: number } {
+    const BASE_WIDTH = 2;
+    if (!this.lucy || this.promptRequestedAt <= 0) {
+      return { color: hexToRgba(dimensionColor, 0.9), width: BASE_WIDTH };
+    }
+
+    const acked = this.lucy.promptAckedAt;
+    if (acked === null) {
+      // In flight. Deliberately colourless — the dimension has not been
+      // confirmed, so claiming its colour would be lying about the state.
+      return { color: 'rgba(255,255,255,0.55)', width: BASE_WIDTH };
+    }
+
+    // Flash on ack, decaying over ~400ms into the steady outline.
+    const flash = Math.max(0, 1 - (t - acked) / 400);
+    return {
+      color: hexToRgba(dimensionColor, 0.75 + 0.25 * flash),
+      width: BASE_WIDTH + 4 * flash,
+    };
+  }
+
+  /**
    * How much of Lucy's stream to show, 0–1 — the switch reveal (§4.1).
    *
    * The clock starts when the prompt is *requested*, not when the portal
@@ -790,6 +831,17 @@ export class App {
     this.hud.status.textContent = text;
     this.hud.status.classList.toggle('hidden', !text);
   }
+}
+
+/** `#rrggbb` → `rgba(...)`. Dimension colours are hex; the outline needs alpha. */
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  const n = parseInt(
+    h.length === 3 ? h.split('').map((c) => c + c).join('') : h,
+    16,
+  );
+  if (Number.isNaN(n)) return `rgba(0,255,180,${alpha})`;
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
 function mb(bytes: number): string {

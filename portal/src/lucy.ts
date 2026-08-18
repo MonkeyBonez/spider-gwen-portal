@@ -334,6 +334,18 @@ export class LucySession {
    */
   /** Set when the probe sees the restyle land, in `performance.now()` terms. */
   private changeSeenAt: number | null = null;
+  /** When the server acked the last prompt, in `performance.now()` terms. */
+  private ackedAt: number | null = null;
+
+  /**
+   * When the server confirmed the last prompt, or null while it is still in
+   * flight. This is *receipt*, not application — the pixels change later, and
+   * `promptVisibleAt` is that. Both are worth showing: the gap between them is
+   * the model working.
+   */
+  get promptAckedAt(): number | null {
+    return this.ackedAt;
+  }
 
   /**
    * When the last prompt visibly took effect, or null if it has not yet.
@@ -373,7 +385,8 @@ export class LucySession {
     }
     try {
       await this.client.setPrompt(prompt, { enhance: false });
-      this.lastPromptAckMs = performance.now() - at;
+      this.ackedAt = performance.now();
+      this.lastPromptAckMs = this.ackedAt - at;
       sessionLog.log('prompt:ack', { label, ackMs: Math.round(this.lastPromptAckMs) });
     } catch (err) {
       // A rejected prompt leaves the previous dimension on screen, which is a

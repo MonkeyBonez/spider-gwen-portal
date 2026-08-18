@@ -675,3 +675,38 @@ Written for a video-to-video restyle model — describe the transformation of th
 - Keep the gesture trigger logic behind an interface so alternative trigger strategies can be swapped in.
 - Everything client-side; no secrets committed; API key via env/local input only. Concretely: the key lives in `portal/.env.local` (gitignored) for local dev and in localStorage for real use; `portal/.env.example` is the tracked template and must stay key-free. A `.githooks/pre-commit` hook blocks env files and key-shaped strings from being staged — enable it in a fresh clone with `git config core.hooksPath .githooks`. Note that Vite **inlines** `VITE_`-prefixed variables into the bundle, so a deployed build must never carry one.
 - Prefer simple 2D canvas first; optimize only if FPS < 24.
+
+#### 4.4 The portal outline as a status light
+
+Built 2026-08-17 (Sne's idea), and the first thing in the app that commits to
+§1.1's "device" direction rather than hedging between it and a plain tool.
+
+The outline of the portal — already on screen, already where the performer is
+looking — reports where a dimension switch has got to:
+
+| State | Outline |
+| --- | --- |
+| In flight (request sent, no ack) | neutral white, thin |
+| **Acked** (server has the prompt) | snaps to the **new dimension's colour** with a short bright flash |
+| Landed (pixels actually changed) | steady, in that colour |
+
+Two things make this worth more than decoration:
+
+- **The three states are genuinely distinct events**, roughly 500ms apart — sent,
+  acked, visible. This is not one transition dressed up as three, and the timing
+  came from measurement (§2.3.1).
+- **It tells the performer something they cannot otherwise know.** The portal is
+  occluded by their own hands at exactly the moment a switch fires, so until now
+  the only feedback that a cycle registered was the contents changing — which is
+  the thing they cannot see. §4.2's skeleton indicator exists for the same
+  reason; this is the cheaper half of it, and should be folded into that
+  component rather than maintained separately.
+
+Colourless while in flight is a deliberate choice: claiming the new dimension's
+colour before the server has confirmed it would be reporting a state we do not
+know to be true.
+
+**Open — this currently draws into the composite canvas**, so it would appear in
+an export. §4.2 makes preview-only overlays a hard architectural constraint (a
+second transparent canvas layered via CSS). Move it there in Phase 1.5, along
+with the polygon outline and landmark overlay it sits with.
