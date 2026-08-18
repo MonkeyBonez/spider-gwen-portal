@@ -14,7 +14,7 @@ import {
   type PortalPoints,
 } from './geometry';
 import { HandTracker } from './handTracking';
-import { Renderer } from './renderer';
+import { Renderer, PORTAL_GREEN } from './renderer';
 import { DebugPanel } from './debugPanel';
 import {
   GesturalTransition,
@@ -708,38 +708,48 @@ export class App {
    * (PRD §1.1, the "device" direction — instrumentation styled as part of the
    * fiction rather than bolted on).
    *
-   * It reports the three states a dimension switch passes through, in the one
-   * place the performer is already looking:
+   * Green is the resting state — nominal, nothing in flight. The switch then
+   * reads as a departure from it and a return:
    *
-   * - **in flight** — request sent, no ack yet. Neutral white, thin. Something
-   *   is happening but nothing is confirmed.
-   * - **acked** — the server has the prompt. Snaps to the *new* dimension's
-   *   colour with a short bright flash, so the confirmation is felt rather than
-   *   read. This is the moment Sne asked for.
-   * - **landed** — the pixels have actually changed (detected, not timed).
-   *   Settles to a steady outline in that colour.
+   * - **in flight** — request sent, no ack. Neutral white, thin. Something is
+   *   happening but nothing is confirmed.
+   * - **acked** — the server has the prompt. Flashes the *new* dimension's
+   *   colour, so the confirmation is felt rather than read. This is the moment
+   *   Sne asked for.
+   * - **settling** — decays back to green over ~700ms.
    *
-   * Note the ack and the landing are genuinely different events ~500ms apart,
-   * so this is not one transition dressed up as three.
+   * Returning to green rather than holding the dimension colour keeps green as
+   * the portal's identity and makes the colour mean *an event*, not a mode. It
+   * also keeps the resting state readable against any dimension: the first
+   * dimension's colour is white, so holding it made the resting outline
+   * indistinguishable from the in-flight state.
+   *
+   * The ack and the landing are genuinely different events ~500ms apart, so
+   * this is not one transition dressed up as three.
    */
-  private outlineStyle(t: number, dimensionColor: string): { color: string; width: number } {
+  private outlineStyle(
+    t: number,
+    dimensionColor: string,
+  ): { color: string; width: number; glow: number } {
     const BASE_WIDTH = 2;
-    if (!this.lucy || this.promptRequestedAt <= 0) {
-      return { color: hexToRgba(dimensionColor, 0.9), width: BASE_WIDTH };
-    }
+    const resting = { color: PORTAL_GREEN, width: BASE_WIDTH, glow: 0 };
+    if (!this.lucy || this.promptRequestedAt <= 0) return resting;
 
     const acked = this.lucy.promptAckedAt;
     if (acked === null) {
       // In flight. Deliberately colourless — the dimension has not been
       // confirmed, so claiming its colour would be lying about the state.
-      return { color: 'rgba(255,255,255,0.55)', width: BASE_WIDTH };
+      return { color: 'rgba(255,255,255,0.55)', width: BASE_WIDTH, glow: 0 };
     }
 
-    // Flash on ack, decaying over ~400ms into the steady outline.
-    const flash = Math.max(0, 1 - (t - acked) / 400);
+    const flash = Math.max(0, 1 - (t - acked) / 700);
+    if (flash <= 0) return resting;
     return {
-      color: hexToRgba(dimensionColor, 0.75 + 0.25 * flash),
-      width: BASE_WIDTH + 4 * flash,
+      color: mixColor(PORTAL_GREEN, dimensionColor, flash, 0.9),
+      width: BASE_WIDTH + 2 * flash,
+      // Glow only during the flash, and modestly — it is a confirmation, not
+      // an alarm.
+      glow: 5 * flash,
     };
   }
 
@@ -833,15 +843,27 @@ export class App {
   }
 }
 
-/** `#rrggbb` → `rgba(...)`. Dimension colours are hex; the outline needs alpha. */
-function hexToRgba(hex: string, alpha: number): string {
-  const h = hex.replace('#', '');
-  const n = parseInt(
-    h.length === 3 ? h.split('').map((c) => c + c).join('') : h,
-    16,
-  );
-  if (Number.isNaN(n)) return `rgba(0,255,180,${alpha})`;
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+/** `#rrggbb` or `rgba(...)` → `[r,g,b]`. */
+function parseColor(c: string): [number, number, number] {
+  if (c.startsWith('#')) {
+    const h = c.slice(1);
+    const n = parseInt(h.length === 3 ? h.split('').map((x) => x + x).join('') : h, 16);
+    if (!Number.isNaN(n)) return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const m = c.match(/rgba?\(([^)]+)\)/);
+  if (m) {
+    const [r, g, b] = m[1].split(',').map((v) => Number(v.trim()));
+    return [r || 0, g || 0, b || 0];
+  }
+  return [0, 255, 180];
+}
+
+/** Blend `from` toward `to` by `amount`, at a fixed alpha. */
+function mixColor(from: string, to: string, amount: number, alpha: number): string {
+  const a = parseColor(from);
+  const b = parseColor(to);
+  const mix = (i: number) => Math.round(a[i] + (b[i] - a[i]) * amount);
+  return `rgba(${mix(0)},${mix(1)},${mix(2)},${alpha})`;
 }
 
 function mb(bytes: number): string {

@@ -686,9 +686,16 @@ looking — reports where a dimension switch has got to:
 
 | State | Outline |
 | --- | --- |
+| Resting | the portal's green — nominal |
 | In flight (request sent, no ack) | neutral white, thin |
-| **Acked** (server has the prompt) | snaps to the **new dimension's colour** with a short bright flash |
-| Landed (pixels actually changed) | steady, in that colour |
+| **Acked** (server has the prompt) | flashes the **new dimension's colour**, decaying back to green over ~700ms |
+
+**It returns to green rather than holding the dimension's colour.** That keeps
+green as the portal's identity and makes colour mean *an event* rather than a
+mode. It is also the only readable option: the first dimension's colour is
+white, so holding it made the resting state indistinguishable from in-flight.
+The glow is tied to the flash alone — an outline that glows permanently drowns
+the very thing it exists to make legible.
 
 Two things make this worth more than decoration:
 

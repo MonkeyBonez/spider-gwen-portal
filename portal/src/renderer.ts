@@ -17,6 +17,9 @@ import type { Config } from './config';
 import { polygonOrder, type PortalPoints, type Pt } from './geometry';
 import type { TrackedHands } from './handTracking';
 
+/** Resting outline colour — the portal's "nominal" state. */
+export const PORTAL_GREEN = 'rgba(0,255,180,0.9)';
+
 const HAND_CONNECTIONS: [number, number][] = [
   [0, 1], [1, 2], [2, 3], [3, 4],
   [0, 5], [5, 6], [6, 7], [7, 8],
@@ -58,7 +61,7 @@ export interface RenderInput {
    * place the performer is already looking. Defaults preserve the original
    * fixed teal when nothing sets it.
    */
-  outline?: { color: string; width: number };
+  outline?: { color: string; width: number; glow?: number };
 }
 
 export class Renderer {
@@ -154,24 +157,31 @@ export class Renderer {
     return cfg.mirror ? { x: this.canvas.width - p.x, y: p.y } : p;
   }
 
-  private strokePortal(pts: Pt[], outline?: { color: string; width: number }): void {
+  private strokePortal(
+    pts: Pt[],
+    outline?: { color: string; width: number; glow?: number },
+  ): void {
     const ctx = this.ctx;
-    const color = outline?.color ?? 'rgba(0,255,180,0.9)';
+    const color = outline?.color ?? PORTAL_GREEN;
     const width = outline?.width ?? 2;
+    const glow = outline?.glow ?? 0;
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = width;
-    // A glow proportional to the weight, so the ack flash reads as the frame
-    // energising rather than just thickening. Cheap: one shadowed stroke.
-    ctx.shadowColor = color;
-    ctx.shadowBlur = width * 3;
+    // Glow only while something is actually happening. Tying it to line width
+    // meant the outline glowed permanently, which drowned the flash it was
+    // supposed to make legible — a status light that is always lit says nothing.
+    if (glow > 0) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = glow;
+    }
     ctx.stroke(pathOf(pts));
     const labels = ['L-idx', 'R-idx', 'R-thm', 'L-thm'];
     ctx.font = '600 14px ui-monospace, monospace';
     ctx.fillStyle = color;
     pts.forEach((p, i) => {
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 3 + width, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 4 + width * 0.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillText(labels[i], p.x + 8, p.y - 8);
     });
