@@ -243,13 +243,16 @@ export class LucySession {
         // fixed library where each dimension has to look the same every time it
         // comes round, and an enhanced rewrite would drift between visits.
         //
-        // Under passthrough the prompt is sent anyway but should have no effect,
-        // since nothing is being generated — keeping it means the session is
-        // otherwise identical, so the two Δs are comparable.
-        initialState: {
-          prompt: { text: this.opts.initialPrompt, enhance: false },
-          ...(this.opts.passthrough ? { passthrough: true } : {}),
-        },
+        // **Under passthrough the prompt is omitted entirely**, and that is
+        // load-bearing. The SDK's own default is
+        // `passthrough: opts.passthrough ?? !userSetInitialState` — sending a
+        // prompt *is* how you ask for generation. The first attempt kept the
+        // prompt "so the sessions stay comparable" and got a session that
+        // generated for 56 of 59 seconds and returned a full-model Δ. Comparable
+        // and wrong.
+        initialState: this.opts.passthrough
+          ? { passthrough: true }
+          : { prompt: { text: this.opts.initialPrompt, enhance: false } },
         onRemoteStream: (remote) => {
           this.remote = remote;
           this.videoEl.srcObject = remote;
@@ -389,6 +392,13 @@ export class LucySession {
 
   async setPrompt(prompt: string, label?: string): Promise<void> {
     if (!this.client) return;
+    if (this.opts.passthrough) {
+      // A prompt is what takes a session *out* of passthrough, so sending one
+      // here would quietly turn a measurement run into a generating one — and
+      // bill for it. Refuse and say so.
+      sessionLog.log('prompt:skipped-passthrough', { label });
+      return;
+    }
     const at = performance.now();
     this.lastPromptAt = at;
     this.lastPromptAckMs = null;

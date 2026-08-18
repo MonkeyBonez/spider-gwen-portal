@@ -258,13 +258,20 @@ export interface Config {
 /**
  * Current config schema. See `Config.schemaVersion`.
  *
+ * 3 → 4: **TEMPORARY, for the passthrough measurement run of 2026-08-17.**
+ * Forces `lucyPassthrough: true` and `recordStreams: false` so the transport-leg
+ * measurement is not perturbed by recording (~30ms and several fps on h264, and
+ * we are testing a ~145ms prediction). **Revert this and bump to 5 once the
+ * measurement is done** — passthrough is a diagnostic mode and must not be a
+ * product default.
+ *
  * 2 → 3: move to the vp9 publish codec. Measured better on 2026-08-16 (encode
  * 7.1ms → 2.0ms, Δ 630ms → 601ms at the same frame rate), but two later runs
  * still went out on h264 because the stored value won. Sne asked for the
  * measured default to be applied, so this moves it once. Setting h264 by hand
  * afterwards sticks — the migration is keyed on the version, not the value.
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 export const DEFAULT_CONFIG: Config = {
   captureWidth: 1280,
@@ -310,9 +317,9 @@ export const DEFAULT_CONFIG: Config = {
   warmUpBeforeReveal: true,
 
   idleDisconnectMs: 60_000,
-  recordStreams: true,
+  recordStreams: false, // TEMPORARY — off so it does not perturb the measurement
   lucyCodec: 'vp9',
-  lucyPassthrough: false,
+  lucyPassthrough: true, // TEMPORARY — measurement run, revert with schema v5
 
   // Hold + fade = 1.0s, from the `prompt:settle` curves on 2026-08-16: five
   // switches landed between 400ms and 900ms after the request. Biased to
@@ -389,6 +396,11 @@ export function loadConfig(): Config {
   // `storedVersion` is 0 when there was nothing stored, in which case the
   // defaults are already current and the migration is a no-op anyway.
   if (storedVersion > 0 && storedVersion < 3) cfg.lucyCodec = 'vp9';
+  // TEMPORARY — see SCHEMA_VERSION. Remove with the version-4 note.
+  if (storedVersion < 4) {
+    cfg.lucyPassthrough = true;
+    cfg.recordStreams = false;
+  }
   cfg.schemaVersion = SCHEMA_VERSION;
   if (cfg.revealHoldMs === LEGACY_REVEAL_HOLD_MS && cfg.revealFadeMs === LEGACY_REVEAL_FADE_MS) {
     cfg.revealHoldMs = DEFAULT_CONFIG.revealHoldMs;
