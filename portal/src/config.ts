@@ -166,6 +166,25 @@ export interface Config {
    * rate unchanged at 30. Note the SDK forces vp8 on desktop Safari regardless.
    */
   lucyCodec: LucyCodec;
+  /**
+   * Connect in **passthrough**: the server relays the video without running the
+   * model. **Takes effect on the next connect** (reload — a `C` reconnect does
+   * not reliably re-publish).
+   *
+   * A measurement tool, not a feature. Δ is ~630ms of which the inference leg
+   * is only known by subtraction — total minus encode, RTT, jitter buffer and
+   * decode. Passthrough measures the *rest* of the path directly, so the
+   * difference between the two Δs is the model's contribution, measured rather
+   * than inferred.
+   *
+   * Worth watching `billed` while it runs: if passthrough does not consume
+   * generation-seconds, it becomes a cheap way to warm the connection during
+   * §4.3's tutorial. It still could not calibrate Δ — inference is the part it
+   * omits — but warming and calibrating could then be split.
+   *
+   * The portal will show untransformed video while this is on. That is correct.
+   */
+  lucyPassthrough: boolean;
 
   // --- switch reveal (§4.1) -------------------------------------------------
   /**
@@ -293,6 +312,7 @@ export const DEFAULT_CONFIG: Config = {
   idleDisconnectMs: 60_000,
   recordStreams: true,
   lucyCodec: 'vp9',
+  lucyPassthrough: false,
 
   // Hold + fade = 1.0s, from the `prompt:settle` curves on 2026-08-16: five
   // switches landed between 400ms and 900ms after the request. Biased to

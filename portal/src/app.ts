@@ -201,6 +201,7 @@ export class App {
       // so reconnecting mid-session doesn't silently rewind the universe.
       initialPrompt: DIMENSIONS[this.dimensionIndex].prompt,
       codec: this.cfg.lucyCodec,
+      passthrough: this.cfg.lucyPassthrough,
       onPhase: (phase, detail) => this.setLucyChip(detail, phase),
     });
     this.lucy = session;
@@ -222,7 +223,9 @@ export class App {
       return;
     }
 
-    this.toast(`Lucy live · ${this.cfg.lucyCodec}${this.cfg.recordStreams ? ' · recording' : ''}`);
+    this.toast(
+      `Lucy live · ${this.cfg.lucyCodec}${this.cfg.lucyPassthrough ? ' · PASSTHROUGH (no model)' : ''}${this.cfg.recordStreams ? ' · recording' : ''}`,
+    );
 
     // Deliberately outside the try above. Recording is diagnostics; it must
     // never be able to fail the session it is observing — which is exactly what

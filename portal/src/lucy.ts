@@ -123,6 +123,8 @@ export interface LucyOptions {
   initialPrompt: string;
   /** Publish codec — decides whether the SDK enables simulcast. See `config.lucyCodec`. */
   codec: LucyCodec;
+  /** Relay without running the model — a measurement mode. See `config.lucyPassthrough`. */
+  passthrough?: boolean;
   onPhase?: (phase: LucyPhase, detail: string) => void;
 }
 
@@ -240,7 +242,14 @@ export class LucySession {
         // `enhance` lets the server rewrite the prompt. Off: we are cycling a
         // fixed library where each dimension has to look the same every time it
         // comes round, and an enhanced rewrite would drift between visits.
-        initialState: { prompt: { text: this.opts.initialPrompt, enhance: false } },
+        //
+        // Under passthrough the prompt is sent anyway but should have no effect,
+        // since nothing is being generated — keeping it means the session is
+        // otherwise identical, so the two Δs are comparable.
+        initialState: {
+          prompt: { text: this.opts.initialPrompt, enhance: false },
+          ...(this.opts.passthrough ? { passthrough: true } : {}),
+        },
         onRemoteStream: (remote) => {
           this.remote = remote;
           this.videoEl.srcObject = remote;
@@ -322,6 +331,7 @@ export class LucySession {
     sessionLog.log('lucy:connected', {
       model: MODEL_NAME,
       codec: this.opts.codec,
+      passthrough: this.opts.passthrough ?? false,
       connectMs: Math.round(performance.now() - startedAt),
       sessionId: this.client.sessionId,
     });

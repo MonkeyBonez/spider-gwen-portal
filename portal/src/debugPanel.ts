@@ -118,6 +118,7 @@ const TOGGLES: { key: BoolKeys; label: string }[] = [
   { key: 'revealFromColor', label: 'Reveal from colour' },
   { key: 'recordStreams', label: 'Record raw streams (dev)' },
   { key: 'warmUpBeforeReveal', label: 'Wait for calibration before revealing' },
+  { key: 'lucyPassthrough', label: 'Passthrough — no model (reload to apply)' },
 ];
 
 export interface Readouts {
