@@ -175,9 +175,12 @@ export function showTakeReview(
     // mid-seek states, where no frame is being presented to ask about.
     const ms = mediaMs ?? video.currentTime * 1000;
     try {
+      // This canvas is transparent and sits over the <video>, so it owns its
+      // own clear — see `drawOverlay`, which does not clear for the export's
+      // sake.
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       const frame = overlayAt(take.frames, ms);
       if (frame) drawOverlay(ctx, frame, layers);
-      else ctx.clearRect(0, 0, canvas.width, canvas.height);
     } catch (err) {
       // A throw used to kill the loop permanently: `tick` calls `paint` before
       // rescheduling, so one bad frame froze the overlay on screen with the
@@ -350,6 +353,9 @@ export async function exportTake(
   });
 
   const compose = (mediaMs: number): void => {
+    // No clear: the video frame covers the canvas, and `drawOverlay` goes on
+    // top of it. Clearing between the two is what produced an exported file of
+    // nothing but the outline on black.
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const frame = overlayAt(take.frames, mediaMs);
     if (frame) drawOverlay(ctx, frame, layers);

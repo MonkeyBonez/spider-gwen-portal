@@ -95,13 +95,21 @@ export function emptyOverlayFrame(): OverlayFrame {
   };
 }
 
-/** Clear `ctx` and paint `frame`, honouring `layers`. */
+/**
+ * Paint `frame` onto `ctx`, honouring `layers`.
+ *
+ * **Draws only — it must never clear.** The two live callers own a dedicated
+ * transparent canvas and clear it themselves before calling; the export draws
+ * the video frame and then this, *onto the same canvas*. Clearing here erased
+ * the video and shipped files containing a portal outline on black, which is
+ * exactly what happened once (2026-08-18) and is what `does not clear` in the
+ * tests pins.
+ */
 export function drawOverlay(
   ctx: CanvasRenderingContext2D,
   frame: OverlayFrame,
   layers: OverlayLayers,
 ): void {
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   if (frame.portal && frame.opacity > 0.01 && layers.portal) {
     strokePortal(ctx, frame.portal, frame.outline, frame.opacity);
   }

@@ -196,7 +196,12 @@ export class Renderer {
 
   /** Paint the live overlay canvas. No-op when the app supplied no overlay. */
   renderOverlay(frame: OverlayFrame, layers: OverlayLayers): void {
-    if (this.overlayCtx) drawOverlay(this.overlayCtx, frame, layers);
+    if (!this.overlayCtx) return;
+    // The clear belongs to whoever owns the surface. `drawOverlay` deliberately
+    // does not do it, because the export composites it over a video frame on a
+    // single canvas and a clear there would wipe the picture.
+    this.overlayCtx.clearRect(0, 0, this.overlayCtx.canvas.width, this.overlayCtx.canvas.height);
+    drawOverlay(this.overlayCtx, frame, layers);
   }
 
   private toScreen(p: Pt, cfg: Config): Pt {
