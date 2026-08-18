@@ -177,10 +177,9 @@ export interface Config {
    * difference between the two Δs is the model's contribution, measured rather
    * than inferred.
    *
-   * Worth watching `billed` while it runs: if passthrough does not consume
-   * generation-seconds, it becomes a cheap way to warm the connection during
-   * §4.3's tutorial. It still could not calibrate Δ — inference is the part it
-   * omits — but warming and calibrating could then be split.
+   * **It bills like a normal session** — 30 generation-seconds over 32 connected
+   * (measured 2026-08-17) — so it is *not* a cheap way to warm the connection
+   * during §4.3's tutorial. That idea is dead.
    *
    * The portal will show untransformed video while this is on. That is correct.
    */
@@ -258,12 +257,13 @@ export interface Config {
 /**
  * Current config schema. See `Config.schemaVersion`.
  *
- * 3 → 4: **TEMPORARY, for the passthrough measurement run of 2026-08-17.**
- * Forces `lucyPassthrough: true` and `recordStreams: false` so the transport-leg
- * measurement is not perturbed by recording (~30ms and several fps on h264, and
- * we are testing a ~145ms prediction). **Revert this and bump to 5 once the
- * measurement is done** — passthrough is a diagnostic mode and must not be a
- * product default.
+ * 4 → 5: undo the temporary passthrough measurement defaults below. The
+ * measurement is done (Δ 128ms passthrough vs 595ms full model), so passthrough
+ * goes back to being a diagnostic you opt into, and recording back on.
+ *
+ * 3 → 4: temporary, for the passthrough measurement run of 2026-08-17 — forced
+ * `lucyPassthrough: true` and `recordStreams: false` so the transport-leg
+ * measurement was not perturbed by recording. Superseded by 5.
  *
  * 2 → 3: move to the vp9 publish codec. Measured better on 2026-08-16 (encode
  * 7.1ms → 2.0ms, Δ 630ms → 601ms at the same frame rate), but two later runs
@@ -271,7 +271,7 @@ export interface Config {
  * measured default to be applied, so this moves it once. Setting h264 by hand
  * afterwards sticks — the migration is keyed on the version, not the value.
  */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 export const DEFAULT_CONFIG: Config = {
   captureWidth: 1280,
@@ -317,9 +317,9 @@ export const DEFAULT_CONFIG: Config = {
   warmUpBeforeReveal: true,
 
   idleDisconnectMs: 60_000,
-  recordStreams: false, // TEMPORARY — off so it does not perturb the measurement
+  recordStreams: true,
   lucyCodec: 'vp9',
-  lucyPassthrough: true, // TEMPORARY — measurement run, revert with schema v5
+  lucyPassthrough: false,
 
   // Hold + fade = 1.0s, from the `prompt:settle` curves on 2026-08-16: five
   // switches landed between 400ms and 900ms after the request. Biased to
@@ -396,10 +396,9 @@ export function loadConfig(): Config {
   // `storedVersion` is 0 when there was nothing stored, in which case the
   // defaults are already current and the migration is a no-op anyway.
   if (storedVersion > 0 && storedVersion < 3) cfg.lucyCodec = 'vp9';
-  // TEMPORARY — see SCHEMA_VERSION. Remove with the version-4 note.
-  if (storedVersion < 4) {
-    cfg.lucyPassthrough = true;
-    cfg.recordStreams = false;
+  if (storedVersion > 0 && storedVersion < 5) {
+    cfg.lucyPassthrough = false;
+    cfg.recordStreams = true;
   }
   cfg.schemaVersion = SCHEMA_VERSION;
   if (cfg.revealHoldMs === LEGACY_REVEAL_HOLD_MS && cfg.revealFadeMs === LEGACY_REVEAL_FADE_MS) {
