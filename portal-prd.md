@@ -1,6 +1,25 @@
 # Portal — Real-Time Spider-Verse Dimension Portal (PRD + Build Context)
 
-**Status:** **Phase 0 complete** — exit criteria tested and signed off by Sne, 2026-08-16 (`portal/`). **Phase 1 in progress:** Lucy is live in the portal. Δ **measured at ~600ms** over four instrumented runs, ~85% of it Decart's inference (§2.3.1) — so latency is a constraint to design around, not a bug to fix. This document is the full context for the project. Read it entirely before writing code.
+**Status:** **Phase 1 works.** Lucy composites live inside the portal, prompts cycle on the
+gesture, latency is measured and compensated. Δ is ~595ms of which **~467ms is Decart's model**
+(measured directly against passthrough, §2.3.1) — a constraint to design around, not a bug left
+to find. Phase 0 signed off 2026-08-16; Phase 1 built and measured 2026-08-17.
+
+**Remaining before this is a thing other people can use:**
+
+| # | Work | Why it blocks |
+| --- | --- | --- |
+| 1 | **Export the composite** (Phase 1.5) | There is currently no way to get a video out. The artifact *is* the product; without this the app is a toy. |
+| 2 | **Split the preview overlay onto its own canvas** (§4.2) | Blocks #1. The portal outline, the §4.4 status light and the landmark overlay all draw into the composite canvas today, so they would be burned into every export. |
+| 3 | **Gesture tutorial** (§4.3) | First-run usability, threshold fitting, and it is where the pipeline warm-up hides. |
+| 4 | **Visual language / positioning** (§1.1) | Undecided, and #3 cannot be designed without it. |
+| 5 | **BYO key + public repo** (Phase 2) | Mostly built — the start screen already takes a key into localStorage. Needs a root README, a licence, a cost warning, and a decision to make the repo public. |
+
+**Known and unowned:** Lucy burns an **"AI Generated" watermark** into its output (seen in
+recordings, moves position, nothing in the SDK controls it) — it will be inside the portal in
+every export. Safari has never been run (§3.1 P1). Both need raising with Decart or testing
+before anyone else uses this.
+
 **Owner:** Sne
 **Last updated:** 2026-08-17
 
