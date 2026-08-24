@@ -8,7 +8,7 @@
  * **The 2026-08-23 set, chosen by Sne.** It keeps the two known quantities from
  * the phrasing A/B, restores the *original* multiverse phrasing (the rewrite
  * from 2026-08-17 never got a run and is preserved in git history), and adds
- * three scene experiments: a named location, extra characters, and an action.
+ * two scene experiments: a named location and extra characters.
  * The open question has moved from "how do you phrase the suit" — answered:
  * lead with the costumed subject, name the technique — to "what beyond the
  * suit can a prompt add".
@@ -35,8 +35,8 @@
  * clearly, "in a skyscraper" (from the retired `mask-only`) did not appear at
  * all. The distinction looks like texture-vs-place — a style word applies
  * across whatever is in frame, a specific location needs room the shot does
- * not have, since the subject fills it. `skyscraper`, `hangout` and `villain`
- * test whether "on top of", added characters, or an action fare any better.
+ * not have, since the subject fills it. `skyscraper` and `hangout` test
+ * whether "on top of" or added characters fare any better.
  */
 
 export interface Dimension {
@@ -86,13 +86,6 @@ export const DIMENSIONS: Dimension[] = [
     color: '#2ecc71',
     prompt:
       'Comic-book animated superhero in a red-and-blue spider suit, halftone shading, bold ink outlines with a few other superheroes hanging out having a drink',
-  },
-  {
-    // The proven comic prompt plus an action and an antagonist.
-    name: 'villain',
-    color: '#ffb020',
-    prompt:
-      'Comic-book animated superhero in a red-and-blue spider suit, halftone shading, bold ink outlines fighting a supervillain',
   },
 ];
 
