@@ -5,43 +5,38 @@
  * `color` fills the portal before Lucy's first frame decodes — the cold start
  * is 4–5s, so it is on screen for a real amount of time.
  *
- * **Right now this is a prompt-phrasing A/B, not six worlds.** All four entries
- * describe the same comic look and vary only in how it is asked for, so that a
- * close→open cycle steps between phrasings with everything else held constant.
- * Names say what varies rather than what it looks like, because the HUD chip is
- * the only way to tell which one is on screen when the outputs are similar.
+ * **The 2026-08-23 set, chosen by Sne.** It keeps the two known quantities from
+ * the phrasing A/B, restores the *original* multiverse phrasing (the rewrite
+ * from 2026-08-17 never got a run and is preserved in git history), and adds
+ * three scene experiments: a named location, extra characters, and an action.
+ * The open question has moved from "how do you phrase the suit" — answered:
+ * lead with the costumed subject, name the technique — to "what beyond the
+ * suit can a prompt add".
  *
  * Prompt text is **verbatim as written by Sne**. Wording is the experiment, so
- * it does not get tidied — not the capitalisation, not the missing "is a" in
- * `mask-only`. See `PROMPT_LIBRARY` below for the six-world set this replaced.
+ * it does not get tidied. See `PROMPT_LIBRARY` below for the six-world set
+ * that preceded all of this.
  *
- * **Results, from the 2026-08-17 vp9 run** (frames pulled from the recorded Lucy
- * stream, one per dimension):
+ * **Results, from the 2026-08-17 vp9 run** (frames pulled from the recorded
+ * Lucy stream), for the entries that have run before:
  *
  * - `style-only` — restyles *him*: comic linework and flat colour on his real
  *   face, real clothes, real room. No costume at all. So the subject clause is
  *   what produces the suit; the technique words only change how it is drawn.
  * - `style+subject` — the full comic-book spider suit, heavy ink outlines, flat
  *   cel colour, room stylised to match. The most "animated Spider-Verse" of the
- *   four, and the closest to the trend.
- * - `high-tech` (logged as `multiverse` before 2026-08-17) — a different thing
- *   entirely: photoreal game-cinematic render, glossy suit, and a legibly
- *   high-tech environment. Naming no rendering technique did not give a neutral
- *   result, it gave a 3D one. Kept as a *contrasting* dimension rather than a
- *   variant of the comic look — the portal should open onto a different medium,
- *   not a different filter.
- * - `mask-only` — literal: the mask alone, over his real body, clothes and room.
- *   The smallest transformation of the four.
+ *   set, and the closest to the trend. The reliable one.
+ * - `multiverse` — intermittent: often failed to put him in the suit at all.
+ *   When it did land it went photoreal game-cinematic, not comic — naming no
+ *   rendering technique gave a 3D result, not a neutral one. Back in the set
+ *   unchanged, to re-run against the new scene prompts on equal footing.
  *
- * Renamed `multiverse` → `high-tech` at the same time, since the rewrite drops
- * the word "multiverse" from the prompt. Logs from before that date use the old
- * name.
- *
- * On scene clauses, the two behaved differently: "background is high tech"
- * rendered clearly, "in a skyscraper" did not appear at all. The distinction
- * looks like texture-vs-place — a style word can be applied across whatever is
- * already in frame, whereas a specific location needs room the shot does not
- * have, since the subject fills it.
+ * On scene clauses, prior runs split: "background is high tech" rendered
+ * clearly, "in a skyscraper" (from the retired `mask-only`) did not appear at
+ * all. The distinction looks like texture-vs-place — a style word applies
+ * across whatever is in frame, a specific location needs room the shot does
+ * not have, since the subject fills it. `skyscraper`, `hangout` and `villain`
+ * test whether "on top of", added characters, or an action fare any better.
  */
 
 export interface Dimension {
@@ -52,68 +47,60 @@ export interface Dimension {
 
 export const DIMENSIONS: Dimension[] = [
   {
-    // No subject at all — pure rendering technique. The control: if this reads
-    // as well as the others, the subject clause is not doing the work.
+    // No subject at all — pure rendering technique. Known result: comic
+    // linework on the real him, no costume. Kept as the control.
     name: 'style-only',
     color: '#ffffff',
     prompt: 'Comic-book animated, halftone shading, bold ink outlines',
   },
   {
-    // Subject + costume + technique. The one that landed on the first run.
+    // Subject + costume + technique. The reliable one — the baseline the
+    // scene experiments below are judged against.
     name: 'style+subject',
     color: '#e0332c',
     prompt:
       'Comic-book animated superhero in a red-and-blue spider suit, halftone shading, bold ink outlines',
   },
   {
-    /*
-     * Rewritten 2026-08-17: Sne reported it often failed to put him in the suit
-     * at all. Was:
-     *
-     *   Subject is a Superhero in a red-and-blue spider suit in other part of
-     *   multiverse - background is high tech
-     *
-     * Three changes, each aimed at that failure:
-     *
-     * - **Dropped "Subject is a".** That is meta-language about the *input* —
-     *   a statement about who the person is. The model is transforming a frame,
-     *   and grounds better on a noun phrase describing what the frame should
-     *   become. Note the prompt that never fails (`style+subject`) opens
-     *   straight into the description.
-     * - **Dropped "in other part of multiverse".** Nothing to render: it is an
-     *   abstraction, and it was sitting between the costume and the background,
-     *   costing attention and returning no pixels.
-     * - **Named the rendering technique.** This is the likeliest cause of the
-     *   *intermittency*. `style+subject` pins its look with "halftone shading,
-     *   bold ink outlines"; this one pinned nothing, so each pass drifted
-     *   wherever the model went. It came back photoreal by accident, so that is
-     *   now asked for deliberately — the contrast with the comic dimensions is
-     *   worth keeping, but it should be reliable rather than lucky.
-     *
-     * The costume clause also moves to the front, where it is in the prompt
-     * that works.
-     */
-    name: 'high-tech',
+    // The original multiverse phrasing, restored verbatim 2026-08-23. Known
+    // intermittent (see header); back in for a fair re-run. The 2026-08-17
+    // rewrite ("cinematic 3D render...") lives in git history if wanted back.
+    name: 'multiverse',
     color: '#2f7bff',
     prompt:
-      'A superhero in a red-and-blue spider suit, high-tech neon-lit environment, cinematic 3D render, sharp detail',
+      'Subject is a Superhero in a red-and-blue spider suit in other part of multiverse - background is high tech',
   },
   {
-    // The only one asking for a mask rather than a suit, and the only one
-    // naming a concrete location. Two things to watch: whether it transforms
-    // the face more and the body less, and whether a specific setting survives
-    // — the portal is a small window, so most of a skyscraper falls outside it.
-    name: 'mask-only',
+    // Named location. "in a skyscraper" never rendered; this asks for "on top
+    // of" one — a rooftop reads as skyline texture behind the subject, which
+    // may survive where an interior could not.
+    name: 'skyscraper',
     color: '#c84bff',
-    prompt: 'Subject Superhero in a red-and-blue spider mask in a skyscraper',
+    prompt:
+      'Subject is a Superhero in a red-and-blue spider suit on top of a skyscraper',
+  },
+  {
+    // The proven comic prompt plus extra characters. Tests whether Lucy can
+    // add people who are not in the frame, or only restyle who is.
+    name: 'hangout',
+    color: '#2ecc71',
+    prompt:
+      'Comic-book animated superhero in a red-and-blue spider suit, halftone shading, bold ink outlines with a few other superheroes hanging out having a drink',
+  },
+  {
+    // The proven comic prompt plus an action and an antagonist.
+    name: 'villain',
+    color: '#ffb020',
+    prompt:
+      'Comic-book animated superhero in a red-and-blue spider suit, halftone shading, bold ink outlines fighting a supervillain',
   },
 ];
 
 /**
  * The original six-world set from PRD §6, kept so it is not lost while the
- * phrasing A/B runs. Swap back by assigning this to `DIMENSIONS`.
+ * prompt experiments run. Swap back by assigning this to `DIMENSIONS`.
  *
- * Note what separates these from the four above: each names a subject, what
+ * Note what separates these from the set above: each names a subject, what
  * they are wearing, *and* a rendering technique. `pixel` and `anime` are the
  * exceptions — they describe only a world, with no person in it, which is a
  * weak brief for a model whose job is transforming the person in frame.
