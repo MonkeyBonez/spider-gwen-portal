@@ -230,7 +230,12 @@ export class App {
     this.setStatus('');
     this.running = true;
     // After `resize`, which is what gives the canvas a size to capture.
-    this.startTake();
+    //
+    // Held back when the tutorial is running: nobody wants to keep a video that
+    // opens with two minutes of themselves being taught where to put their
+    // hands. It starts instead at step 3, the moment the lesson becomes the
+    // thing itself — see the loop.
+    if (!this.tutorial) this.startTake();
     this.lastFrameAt = performance.now();
     this.lastHandsAt = performance.now();
     requestAnimationFrame((t) => this.loop(t));
@@ -461,6 +466,11 @@ export class App {
       this.hud.caption.classList.toggle('hidden', !tut.caption);
       this.hud.caption.classList.toggle('soft', tut.phase === 'skeleton');
     }
+    // Step 3 is where the tutorial stops teaching and starts being the app: the
+    // portal is open, it follows the hands, and the next close→open is a real
+    // jump. That is the first frame worth keeping, so the take starts here
+    // rather than at session open. `startTake` is idempotent.
+    if (tut && tut.phase === 'jump') this.startTake();
     if (tut?.justCompleted) {
       sessionLog.log('tutorial:done', {
         ms: Math.round(t - this.lastHandsAt),
