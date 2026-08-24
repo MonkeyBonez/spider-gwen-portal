@@ -188,6 +188,41 @@ button.secondary {
 
 .hidden { display: none !important; }
 
+/*
+ * The tutorial's one line of instruction, over the video.
+ *
+ * Bottom-anchored on purpose: the hands are in the middle of the frame, and
+ * covering the instruction with the very hands it is instructing would be a poor
+ * joke. Sits above the toast's row so the two never stack on one another.
+ */
+.caption {
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  transform: translateX(-50%);
+  z-index: 3;
+  margin: 0;
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-size: clamp(15px, 2.1vw, 22px);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* "Got you" — the beat where the tracker confirms it can see you. */
+.caption.soft { color: var(--accent); }
+
+/* Three taps here reveal the developer editions. Not signposted, just reachable. */
+.start h1 { cursor: default; user-select: none; }
+
+
 /* --- debug panel ---------------------------------------------------------- */
 
 .panel {

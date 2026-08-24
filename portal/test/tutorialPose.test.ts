@@ -109,3 +109,4 @@ describe('outlinePair', () => {
     near(big.left.handSize / small.left.handSize, 2, 1e-6);
   });
 });
+

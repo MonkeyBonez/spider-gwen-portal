@@ -27,44 +27,24 @@ app.innerHTML = `
       </div>
       <div class="status hidden" id="status"></div>
       <div class="toast hidden" id="toast"></div>
+      <div class="caption hidden" id="caption"></div>
     </div>
     <div class="start" id="start">
-      <h1>VerseJumper</h1>
+      <h1 id="title" title="">VerseJumper</h1>
       <p>Open a portal with your hands and jump between Spider-Verse dimensions — live.</p>
-      <p class="muted">
-        Hold both hands up, thumbs touching and index fingers touching, then open
-        and close them. Each close→open cycle switches dimension.
-      </p>
 
       <div class="key-row" id="key-row">
-        <label for="key-input">Decart API key</label>
+        <label for="key-input" id="key-label">Decart API key</label>
         <input id="key-input" type="password" autocomplete="off" spellcheck="false"
                placeholder="paste key — kept in this browser only" />
         <p class="muted small" id="key-note"></p>
       </div>
 
       <div class="button-row">
-        <button id="start-lucy">Start with Lucy</button>
-        <button id="start-couples" class="secondary">Couples edition</button>
-        <button id="start-camera" class="secondary">Camera only (free)</button>
+        <button id="start-lucy">Start multiverse-hopping</button>
+        <button id="start-couples" class="secondary hidden">Couples edition</button>
+        <button id="start-camera" class="secondary hidden">Camera only (free)</button>
       </div>
-      <p class="muted small">
-        The Lucy stream bills per generation-second. <strong>Couples edition</strong>
-        is the same thing with softer worlds — chibi, animated, crayon, watercolour —
-        that restyle whoever is in frame instead of putting them in a suit.
-        Camera-only runs the whole gesture pipeline with a flat colour in the
-        portal and costs nothing.
-      </p>
-      <p class="muted small">
-        Everything is recorded. Press <strong>End &amp; review</strong> to watch
-        it back, choose which layers you want, and save the video.
-      </p>
-
-      <p class="keys muted">
-      D debug panel · L landmarks · E end take &amp; review · Space manual switch<br />
-      R reset counters ·
-      1–4 pick the switch transition · T flips the timing · C connect/disconnect Lucy
-    </p>
       <p class="error hidden" id="error"></p>
     </div>
   </div>
@@ -77,20 +57,25 @@ const couplesBtn = document.querySelector<HTMLButtonElement>('#start-couples')!;
 
 /** Every launch button, for the disable-all / restore-all cycle. */
 const LAUNCH_BUTTONS: [HTMLButtonElement, string][] = [
-  [lucyBtn, 'Start with Lucy'],
+  [lucyBtn, 'Start multiverse-hopping'],
   [couplesBtn, 'Couples edition'],
   [cameraBtn, 'Camera only (free)'],
 ];
 const errorEl = document.querySelector<HTMLElement>('#error')!;
 const keyInput = document.querySelector<HTMLInputElement>('#key-input')!;
 const keyNote = document.querySelector<HTMLElement>('#key-note')!;
+const keyLabel = document.querySelector<HTMLElement>('#key-label')!;
+const titleEl = document.querySelector<HTMLElement>('#title')!;
 
 // A key in .env.local wins, and there is then nothing to type. Showing the
 // field anyway would invite pasting a second key that silently loses.
 const existing = resolveApiKey();
 if (existing.source === 'env') {
+  // Nothing to type, so nothing to label — just say where the key lives, which
+  // is the only thing anyone needs to know to change it.
   keyInput.remove();
-  keyNote.textContent = 'Using VITE_DECART_API_KEY from portal/.env.local.';
+  keyLabel.remove();
+  keyNote.textContent = 'Set DECART API KEY at portal/.env.local';
 } else {
   if (existing.source === 'stored') keyInput.value = existing.key;
   keyNote.textContent =
@@ -106,7 +91,11 @@ function restoreButtons(): void {
   }
 }
 
-async function launch(useLucy: boolean, dimensions?: Dimension[]): Promise<void> {
+async function launch(
+  useLucy: boolean,
+  dimensions?: Dimension[],
+  tutorial = false,
+): Promise<void> {
   for (const [btn] of LAUNCH_BUTTONS) btn.disabled = true;
   errorEl.classList.add('hidden');
 
@@ -122,10 +111,12 @@ async function launch(useLucy: boolean, dimensions?: Dimension[]): Promise<void>
       lucy: document.querySelector<HTMLElement>('#hud-lucy')!,
       take: document.querySelector<HTMLElement>('#hud-take')!,
       endButton: document.querySelector<HTMLButtonElement>('#end-take')!,
+      caption: document.querySelector<HTMLElement>('#caption')!,
     },
     {
       useLucy,
       dimensions,
+      tutorial,
       // Closing the review screen ends the session; put the home screen back
       // exactly as it was, ready to launch again.
       onExit: () => {
@@ -150,7 +141,11 @@ async function launch(useLucy: boolean, dimensions?: Dimension[]): Promise<void>
 }
 
 /** Both Lucy-backed buttons need a key first; camera-only never does. */
-function launchWithLucy(btn: HTMLButtonElement, dimensions?: Dimension[]): void {
+function launchWithLucy(
+  btn: HTMLButtonElement,
+  dimensions?: Dimension[],
+  tutorial = false,
+): void {
   if (existing.source !== 'env' && !keyInput.value.trim()) {
     errorEl.textContent = 'Paste a Decart API key, or start camera-only.';
     errorEl.classList.remove('hidden');
@@ -158,10 +153,27 @@ function launchWithLucy(btn: HTMLButtonElement, dimensions?: Dimension[]): void 
     return;
   }
   btn.textContent = 'Starting…';
-  void launch(true, dimensions);
+  void launch(true, dimensions, tutorial);
 }
 
-lucyBtn.addEventListener('click', () => launchWithLucy(lucyBtn));
+lucyBtn.addEventListener('click', () => launchWithLucy(lucyBtn, undefined, true));
+
+/**
+ * The other two editions are developer doors, not choices.
+ *
+ * Offering three buttons made the first-run screen a decision about billing
+ * before anyone knew what the thing did. Couples and camera-only still exist —
+ * they are how the gesture gets tuned for free — but they are behind three taps
+ * on the title, which is enough to keep them out of a stranger's way and easy
+ * enough for anyone who has read this far.
+ */
+let titleTaps = 0;
+titleEl.addEventListener('click', () => {
+  titleTaps++;
+  if (titleTaps < 3) return;
+  couplesBtn.classList.remove('hidden');
+  cameraBtn.classList.remove('hidden');
+});
 
 couplesBtn.addEventListener('click', () => launchWithLucy(couplesBtn, COUPLES_DIMENSIONS));
 

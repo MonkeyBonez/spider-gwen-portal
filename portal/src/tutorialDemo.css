@@ -39,12 +39,22 @@
   margin-bottom: 18px;
 }
 
-/* The guide layer sits over the composite; it must never eat pointer events. */
+/*
+ * The guide layer sits over the composite; it must never eat pointer events.
+ *
+ * `background: transparent` is load-bearing, not tidiness. demo.css gives every
+ * `#demo canvas` an opaque `#14161d` backing, which is right for a lone canvas
+ * and fatal for a stacked one: the veil's `destination-out` cutouts punch holes
+ * in this canvas's *bitmap*, but CSS paints the background behind the bitmap, so
+ * the holes revealed flat charcoal instead of the camera and the whole stage
+ * read as black.
+ */
 #demo .stage.overlay {
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
+  background: transparent;
 }
 
 /*

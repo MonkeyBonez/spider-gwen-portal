@@ -15,7 +15,7 @@ import {
 } from './geometry';
 import { HandTracker } from './handTracking';
 import { Renderer } from './renderer';
-import { PORTAL_GREEN, type OverlayFrame } from './overlay';
+import { drawOverlay, PORTAL_GREEN, type OverlayFrame  } from './overlay';
 import { DebugPanel } from './debugPanel';
 import {
   GesturalTransition,
@@ -25,6 +25,7 @@ import {
   applyTransition,
   type TransitionSpec,
 } from './portalTransition';
+import { TutorialFlow } from './tutorialFlow';
 import { CloseOpenTrigger } from './triggers/closeOpenTrigger';
 import type { GestureTrigger } from './triggers/types';
 import { LucySession, resolveApiKey } from './lucy';
@@ -55,6 +56,8 @@ export interface Hud {
   take: HTMLElement;
   /** Ends the take and opens the review player. */
   endButton: HTMLButtonElement;
+  /** The tutorial's one line of instruction. Hidden once it is done. */
+  caption: HTMLElement;
 }
 
 export interface AppOptions {
@@ -72,6 +75,14 @@ export interface AppOptions {
    * about a session changes with it.
    */
   dimensions?: Dimension[];
+  /**
+   * Play the getting-started choreography before handing over the gesture.
+   *
+   * Worth it precisely because Lucy is already connecting underneath: the three
+   * beats take about as long as the cold start, so the wait is spent learning
+   * the gesture rather than watching a colour. See `tutorialFlow.ts`.
+   */
+  tutorial?: boolean;
 }
 
 export class App {
@@ -142,6 +153,14 @@ export class App {
   /** Throttle for the take chip's clock. */
   private nextTakeChipAt = 0;
 
+  /**
+   * The getting-started choreography, or null once it is done with.
+   *
+   * While it is running it owns two things it would otherwise be rude to touch:
+   * whether the portal is open at all, and whether a close→open means anything.
+   */
+  private tutorial: TutorialFlow | null = null;
+
   private hud: Hud;
 
   constructor(root: HTMLElement, hud: Hud, options: AppOptions = {}) {
@@ -149,6 +168,7 @@ export class App {
     this.wantLucy = options.useLucy ?? false;
     this.dimensions = options.dimensions ?? DIMENSIONS;
     this.onExit = options.onExit ?? null;
+    if (options.tutorial) this.tutorial = new TutorialFlow(this.cfg);
 
     const canvas = document.createElement('canvas');
     canvas.className = 'stage';
@@ -364,11 +384,20 @@ export class App {
     // event that starts the collapse; it is not an earlier *guess* that the
     // close is coming. The visible dimension — colour, HUD — still changes at
     // zero closure below, so nothing on screen moves ahead of the animation.
-    if (result.advance) this.requestDimension((this.dimensionIndex + 1) % this.dimensions.length, t);
+    // Suppressed while the tutorial runs. Its own jump deliberately does *not*
+    // change the prompt: Lucy has been streaming dimension 1 since the session
+    // opened, so the first close→open reveals a world that is already warm
+    // instead of asking for a new one and waiting ~2.2s for it to land. Normal
+    // prompt-switching resumes from the second jump.
+    const gestureLive = !this.tutorial || this.tutorial.armed;
+    const promptsLive = !this.tutorial || this.tutorial.complete;
+    if (result.advance && promptsLive) {
+      this.requestDimension((this.dimensionIndex + 1) % this.dimensions.length, t);
+    }
 
     const gestural = this.cfg.transitionTiming === 'gestural';
     if (gestural) {
-      if (result.advance) this.gesturalTransition.collapse(t);
+      if (result.advance && gestureLive) this.gesturalTransition.collapse(t);
       if (result.release) this.gesturalTransition.release(t);
       // The portal stays shut for as long as the hands do — deliberately with no
       // time limit, because holding it closed is a performance choice. The only
@@ -378,7 +407,7 @@ export class App {
       else if (this.gesturalTransition.holding && result.state === 'IDLE') {
         this.gesturalTransition.release(t);
       }
-    } else if (result.advance) {
+    } else if (result.advance && gestureLive) {
       this.transition.trigger(t);
     }
 
@@ -395,7 +424,8 @@ export class App {
       ? this.gesturalTransition.update(t, spec)
       : this.transition.update(t, spec);
 
-    if (transition.swap) {
+    const tutorialJump = transition.swap && !!this.tutorial && !this.tutorial.complete;
+    if (transition.swap && !tutorialJump) {
       this.dimensionIndex = (this.dimensionIndex + 1) % this.dimensions.length;
       this.switches++;
       this.holdStartedAt = t;
@@ -412,6 +442,35 @@ export class App {
       // play, or `1`–`4` previewing a transition. `dimensionIndex` has already
       // advanced here, so the target is the dimension now being shown.
       this.requestDimension(this.dimensionIndex, t);
+    }
+
+    // The tutorial is told what happened and reports what should be true. It
+    // owns whether the portal exists at all this frame; the app still owns the
+    // geometry, the trigger and the transition.
+    const tut =
+      this.tutorial?.update({
+        t,
+        width: this.renderer.canvas.width,
+        height: this.renderer.canvas.height,
+        hands,
+        handsPresent,
+        swapped: transition.swap,
+      }) ?? null;
+    if (tut) {
+      this.hud.caption.textContent = tut.caption;
+      this.hud.caption.classList.toggle('hidden', !tut.caption);
+      this.hud.caption.classList.toggle('soft', tut.phase === 'skeleton');
+    }
+    if (tut?.justCompleted) {
+      sessionLog.log('tutorial:done', {
+        ms: Math.round(t - this.lastHandsAt),
+        dimension: this.dimensions[this.dimensionIndex].name,
+      });
+      // Dropping the reference is what re-arms everything: from here the
+      // gesture, the prompt switching and the overlay all take their normal
+      // path, and nothing has to keep asking whether the tutorial is over.
+      this.tutorial = null;
+      this.hud.caption.classList.add('hidden');
     }
 
     // Our own render rate, once a second, on the same clock as the SDK's stats.
@@ -479,8 +538,15 @@ export class App {
 
     // Display-only reshaping. `this.smoothed` — the un-animated portal — is what
     // the trigger above reads, so the animation can never drive the state machine.
+    // The bloom is the tutorial's own opening flourish. Flooring the closure
+    // with it rather than replacing the transition keeps a close mid-bloom
+    // winning, which is what should happen if someone gets ahead of the lesson.
+    const shownTransition =
+      tut && tut.portalOpen && tut.bloom < transition.closure
+        ? { ...transition, closure: tut.bloom }
+        : transition;
     const rendered = this.smoothed
-      ? applyTransition(this.smoothed, transition, this.cfg.transitionKind)
+      ? applyTransition(this.smoothed, shownTransition, this.cfg.transitionKind)
       : null;
 
     // Sync compensation (PRD §2.3 V2). Lucy's frames depict ~730ms ago, so to
@@ -495,7 +561,7 @@ export class App {
 
     let base: CanvasImageSource = this.video;
     let shownPortal = rendered;
-    let shownOpacity = this.opacity;
+    let shownOpacity = tut && !tut.portalOpen ? 0 : this.opacity;
     if (this.syncApplied > 0) {
       const w = this.renderer.canvas.width;
       const h = this.renderer.canvas.height;
@@ -543,10 +609,31 @@ export class App {
       // will read them is pure garbage collection.
       this.cfg.showLandmarks,
     );
-    this.renderer.renderOverlay(overlayFrame, {
+    const layers = {
       portal: this.cfg.showPolygonOutline,
       landmarks: this.cfg.showLandmarks,
-    });
+    };
+    // While the tutorial is up, its dimming has to sit *under* the outline of
+    // the portal it is dimming — and `renderOverlay` clears before it draws, so
+    // it would wipe the guides. The two passes are ordered by hand instead;
+    // `drawOverlay` never clears, which is what makes that possible.
+    const overlayCtx = this.tutorial ? (this.renderer.overlay?.getContext('2d') ?? null) : null;
+    if (this.tutorial && overlayCtx) {
+      const w = overlayCtx.canvas.width;
+      const h = overlayCtx.canvas.height;
+      overlayCtx.clearRect(0, 0, w, h);
+      this.tutorial.paint(overlayCtx, {
+        t,
+        width: w,
+        height: h,
+        hands,
+        handsPresent,
+        swapped: transition.swap,
+      });
+      drawOverlay(overlayCtx, overlayFrame, layers);
+    } else {
+      this.renderer.renderOverlay(overlayFrame, layers);
+    }
     this.recordTakeFrame(t, overlayFrame);
 
     this.hud.dimension.textContent = `${this.dimensionIndex + 1}/${this.dimensions.length} · ${dimension.name}`;
