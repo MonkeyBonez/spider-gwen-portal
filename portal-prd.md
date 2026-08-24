@@ -1,4 +1,6 @@
-# Portal — Real-Time Spider-Verse Dimension Portal (PRD + Build Context)
+# VerseJumper — Real-Time Spider-Verse Dimension Portal (PRD + Build Context)
+
+**Name:** "VerseJumper" (chosen 2026-08-23) — jumping through different Spider-Man multiverses.
 
 **Status:** **Phase 1 works.** Lucy composites live inside the portal, prompts cycle on the
 gesture, latency is measured and compensated. Δ is ~595ms of which **~467ms is Decart's model**

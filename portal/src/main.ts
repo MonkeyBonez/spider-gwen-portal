@@ -28,8 +28,8 @@ app.innerHTML = `
       <div class="toast hidden" id="toast"></div>
     </div>
     <div class="start" id="start">
-      <h1>Portal</h1>
-      <p>Hand tracking, portal polygon, gesture state machine — with a live Lucy stream inside the portal.</p>
+      <h1>VerseJumper</h1>
+      <p>Open a portal with your hands and jump between Spider-Verse dimensions — live.</p>
       <p class="muted">
         Hold both hands up, thumbs touching and index fingers touching, then open
         and close them. Each close→open cycle switches dimension.

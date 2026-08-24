@@ -490,7 +490,7 @@ export async function exportTake(
 
 function filenameFor(take: Take): string {
   const stamp = take.startedAtIso.replace(/[:.]/g, '-').replace('Z', '');
-  return `portal-${stamp}.${take.extension}`;
+  return `versejumper-${stamp}.${take.extension}`;
 }
 
 function download(blob: Blob, filename: string): void {
