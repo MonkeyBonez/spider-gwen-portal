@@ -17,3 +17,7 @@ portal/public/models/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# The design doc stays local: it is working notes and cost planning, not
+# something a public repo needs. Untracked, not deleted.
+portal-prd.md
