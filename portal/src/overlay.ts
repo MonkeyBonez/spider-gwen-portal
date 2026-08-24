@@ -27,7 +27,14 @@ import type { Pt } from './geometry';
 /** Resting outline colour — the portal's "nominal" state. */
 export const PORTAL_GREEN = 'rgba(0,255,180,0.9)';
 
-const HAND_CONNECTIONS: [number, number][] = [
+/**
+ * MediaPipe's hand topology: the 21 bones connecting the 21 landmarks.
+ *
+ * Exported because the tutorial (`tutorialPose.ts`) builds its hand *outlines*
+ * from the same edges it draws skeletons from — one topology, so the guide the
+ * user aims at and the skeleton that confirms the aim cannot disagree.
+ */
+export const HAND_CONNECTIONS: [number, number][] = [
   [0, 1], [1, 2], [2, 3], [3, 4],
   [0, 5], [5, 6], [6, 7], [7, 8],
   [5, 9], [9, 10], [10, 11], [11, 12],

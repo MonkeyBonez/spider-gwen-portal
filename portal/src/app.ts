@@ -4,7 +4,7 @@
  */
 
 import { loadConfig, saveConfig, type Config } from './config';
-import { DIMENSIONS } from './dimensions';
+import { DIMENSIONS, type Dimension } from './dimensions';
 import {
   CONTACT_MODES,
   normalizedArea,
@@ -66,6 +66,12 @@ export interface AppOptions {
    * told to come back.
    */
   onExit?: () => void;
+  /**
+   * The worlds the portal cycles through. Defaults to the Spider-Verse set;
+   * the start screen's "couples edition" passes a different list. Nothing else
+   * about a session changes with it.
+   */
+  dimensions?: Dimension[];
 }
 
 export class App {
@@ -99,6 +105,7 @@ export class App {
 
   private lucy: LucySession | null = null;
   private wantLucy: boolean;
+  private dimensions: Dimension[];
   private onExit: (() => void) | null;
   /** Detaches the window-level key handler on destroy. */
   private keyAbort = new AbortController();
@@ -140,6 +147,7 @@ export class App {
   constructor(root: HTMLElement, hud: Hud, options: AppOptions = {}) {
     this.hud = hud;
     this.wantLucy = options.useLucy ?? false;
+    this.dimensions = options.dimensions ?? DIMENSIONS;
     this.onExit = options.onExit ?? null;
 
     const canvas = document.createElement('canvas');
@@ -261,7 +269,7 @@ export class App {
       apiKey: key,
       // Connect straight into the current dimension rather than dimension #1,
       // so reconnecting mid-session doesn't silently rewind the universe.
-      initialPrompt: DIMENSIONS[this.dimensionIndex].prompt,
+      initialPrompt: this.dimensions[this.dimensionIndex].prompt,
       codec: this.cfg.lucyCodec,
       passthrough: this.cfg.lucyPassthrough,
       onPhase: (phase, detail) => this.setLucyChip(detail, phase),
@@ -356,7 +364,7 @@ export class App {
     // event that starts the collapse; it is not an earlier *guess* that the
     // close is coming. The visible dimension — colour, HUD — still changes at
     // zero closure below, so nothing on screen moves ahead of the animation.
-    if (result.advance) this.requestDimension((this.dimensionIndex + 1) % DIMENSIONS.length, t);
+    if (result.advance) this.requestDimension((this.dimensionIndex + 1) % this.dimensions.length, t);
 
     const gestural = this.cfg.transitionTiming === 'gestural';
     if (gestural) {
@@ -388,12 +396,12 @@ export class App {
       : this.transition.update(t, spec);
 
     if (transition.swap) {
-      this.dimensionIndex = (this.dimensionIndex + 1) % DIMENSIONS.length;
+      this.dimensionIndex = (this.dimensionIndex + 1) % this.dimensions.length;
       this.switches++;
       this.holdStartedAt = t;
       sessionLog.log('switch', {
         n: this.switches,
-        dimension: DIMENSIONS[this.dimensionIndex].name,
+        dimension: this.dimensions[this.dimensionIndex].name,
         gap: Number(gap.toFixed(3)),
         // How far ahead of the visible swap the prompt went out. Small next to
         // the ~2.2s it takes to land, but it is free and it is measurable.
@@ -467,7 +475,7 @@ export class App {
     const step = dt / (PORTAL_FADE_MS / 1000);
     this.opacity += Math.max(-step, Math.min(step, target - this.opacity));
 
-    const dimension = DIMENSIONS[this.dimensionIndex];
+    const dimension = this.dimensions[this.dimensionIndex];
 
     // Display-only reshaping. `this.smoothed` — the un-animated portal — is what
     // the trigger above reads, so the animation can never drive the state machine.
@@ -541,7 +549,7 @@ export class App {
     });
     this.recordTakeFrame(t, overlayFrame);
 
-    this.hud.dimension.textContent = `${this.dimensionIndex + 1}/${DIMENSIONS.length} · ${dimension.name}`;
+    this.hud.dimension.textContent = `${this.dimensionIndex + 1}/${this.dimensions.length} · ${dimension.name}`;
     this.hud.dimension.style.color = dimension.color;
     this.hud.counter.textContent = `${this.switches} switches`;
 
@@ -999,7 +1007,7 @@ export class App {
     this.promptRequestedAt = t;
     // Not awaited: blocking the render loop on a network ack would stall the
     // collapse animation, and the ack has been seen to take 1.9s.
-    void this.lucy?.setPrompt(DIMENSIONS[index].prompt, DIMENSIONS[index].name);
+    void this.lucy?.setPrompt(this.dimensions[index].prompt, this.dimensions[index].name);
   }
 
   /** Manual play. Under `gestural` this toggles the two halves. */

@@ -90,6 +90,51 @@ export const DIMENSIONS: Dimension[] = [
 ];
 
 /**
+ * "Couples edition" — the same app pointed at a softer, cuter register.
+ *
+ * Added 2026-08-23 at Sne's request as a third way in from the start screen.
+ * Nothing about the mechanic changes; only this list does. The Spider-Verse set
+ * asks for one specific costumed character, which is a strange thing to hand
+ * two people on a sofa — these ask for a *style* and leave the subjects alone,
+ * so whoever is in frame stays themselves, just drawn differently.
+ *
+ * Note what these deliberately drop: no costume clause, no named character. By
+ * the `style-only` result above that means the people are restyled rather than
+ * transformed, which is exactly the point here. Prompt text is verbatim as
+ * written by Sne, with one exception noted below.
+ *
+ * Untested as of 2026-08-23.
+ */
+export const COUPLES_DIMENSIONS: Dimension[] = [
+  {
+    name: 'chibi',
+    color: '#ff8bd1',
+    prompt: 'Cute chibi style',
+  },
+  {
+    // The only one phrased as an instruction ("Restyle to...") rather than a
+    // description. Worth watching against the others — the Spider-Verse set
+    // found meta-language about the input grounded worse than a noun phrase.
+    name: 'animated',
+    color: '#8bc7ff',
+    prompt: 'Restyle to animated movie',
+  },
+  {
+    // Sne wrote "Chidlish"; corrected to "Childish" since a misspelling is a
+    // slip rather than a phrasing choice, and the verbatim rule exists to
+    // protect deliberate wording. Revert if the typo turns out to be the point.
+    name: 'crayon',
+    color: '#ffd166',
+    prompt: 'Childish/cute Crayon style',
+  },
+  {
+    name: 'watercolor',
+    color: '#a6e3a1',
+    prompt: 'Cute watercolor style',
+  },
+];
+
+/**
  * The original six-world set from PRD §6, kept so it is not lost while the
  * prompt experiments run. Swap back by assigning this to `DIMENSIONS`.
  *

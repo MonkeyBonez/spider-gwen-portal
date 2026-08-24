@@ -127,6 +127,9 @@ export default defineConfig({
         // Same comparison as `closure`, but on the live camera — the strictness
         // gets picked here, on real hands.
         tune: resolve(here, 'tune.html'),
+        // The getting-started choreography, camera-only so refining it costs
+        // no Lucy generation time.
+        tutorial: resolve(here, 'tutorial.html'),
       },
     },
   },

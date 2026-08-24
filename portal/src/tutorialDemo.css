@@ -1,0 +1,113 @@
+/* Styles specific to tutorial.html. Layout basics come from demo.css. */
+
+#demo .hidden {
+  display: none !important;
+}
+
+#demo .gate {
+  padding: 32px 0;
+}
+
+#demo .gate button,
+#demo .controls button {
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--fg);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+#demo .controls button {
+  padding: 6px 14px;
+  font-size: 12px;
+}
+
+#demo .gate button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+#demo .error {
+  color: #ff8080;
+  font-size: 13px;
+  margin-top: 12px;
+}
+
+#demo .stage-wrap {
+  margin-bottom: 18px;
+}
+
+/* The guide layer sits over the composite; it must never eat pointer events. */
+#demo .stage.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/*
+ * The caption is the only text on screen during the tutorial, so it gets to be
+ * large and centred. Bottom-anchored: the hands are in the middle of the frame
+ * and covering the instruction with your own hands would be a poor joke.
+ */
+#demo .caption {
+  position: absolute;
+  left: 50%;
+  bottom: 8%;
+  transform: translateX(-50%);
+  z-index: 2;
+  margin: 0;
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-size: clamp(15px, 2.1vw, 22px);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+#demo .caption.soft {
+  color: var(--accent);
+}
+
+#demo .step-dots {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+}
+
+#demo .step-dots .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+#demo .step-dots .dot.done {
+  background: var(--accent);
+}
+
+#demo .step-dots .dot.active {
+  background: var(--fg);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+}
+
+#demo .readout {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  margin: 14px 0 0;
+}

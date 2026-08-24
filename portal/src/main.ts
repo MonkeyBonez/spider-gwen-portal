@@ -1,5 +1,6 @@
 import './style.css';
 import { App } from './app';
+import { COUPLES_DIMENSIONS, type Dimension } from './dimensions';
 import { resolveApiKey, storeApiKey } from './lucy';
 import { sessionLog } from './sessionLog';
 
@@ -44,11 +45,15 @@ app.innerHTML = `
 
       <div class="button-row">
         <button id="start-lucy">Start with Lucy</button>
+        <button id="start-couples" class="secondary">Couples edition</button>
         <button id="start-camera" class="secondary">Camera only (free)</button>
       </div>
       <p class="muted small">
-        The Lucy stream bills per generation-second. Camera-only runs the whole
-        gesture pipeline with a flat colour in the portal and costs nothing.
+        The Lucy stream bills per generation-second. <strong>Couples edition</strong>
+        is the same thing with softer worlds — chibi, animated, crayon, watercolour —
+        that restyle whoever is in frame instead of putting them in a suit.
+        Camera-only runs the whole gesture pipeline with a flat colour in the
+        portal and costs nothing.
       </p>
       <p class="muted small">
         Everything is recorded. Press <strong>End &amp; review</strong> to watch
@@ -68,6 +73,14 @@ app.innerHTML = `
 const startScreen = document.querySelector<HTMLElement>('#start')!;
 const lucyBtn = document.querySelector<HTMLButtonElement>('#start-lucy')!;
 const cameraBtn = document.querySelector<HTMLButtonElement>('#start-camera')!;
+const couplesBtn = document.querySelector<HTMLButtonElement>('#start-couples')!;
+
+/** Every launch button, for the disable-all / restore-all cycle. */
+const LAUNCH_BUTTONS: [HTMLButtonElement, string][] = [
+  [lucyBtn, 'Start with Lucy'],
+  [couplesBtn, 'Couples edition'],
+  [cameraBtn, 'Camera only (free)'],
+];
 const errorEl = document.querySelector<HTMLElement>('#error')!;
 const keyInput = document.querySelector<HTMLInputElement>('#key-input')!;
 const keyNote = document.querySelector<HTMLElement>('#key-note')!;
@@ -86,9 +99,15 @@ if (existing.source === 'env') {
 
 let instance: App | null = null;
 
-async function launch(useLucy: boolean): Promise<void> {
-  lucyBtn.disabled = true;
-  cameraBtn.disabled = true;
+function restoreButtons(): void {
+  for (const [btn, label] of LAUNCH_BUTTONS) {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+async function launch(useLucy: boolean, dimensions?: Dimension[]): Promise<void> {
+  for (const [btn] of LAUNCH_BUTTONS) btn.disabled = true;
   errorEl.classList.add('hidden');
 
   if (useLucy && existing.source !== 'env') storeApiKey(keyInput.value);
@@ -106,14 +125,12 @@ async function launch(useLucy: boolean): Promise<void> {
     },
     {
       useLucy,
+      dimensions,
       // Closing the review screen ends the session; put the home screen back
       // exactly as it was, ready to launch again.
       onExit: () => {
         instance = null;
-        lucyBtn.disabled = false;
-        cameraBtn.disabled = false;
-        lucyBtn.textContent = 'Start with Lucy';
-        cameraBtn.textContent = 'Camera only (free)';
+        restoreButtons();
         startScreen.classList.remove('hidden');
       },
     },
@@ -125,24 +142,28 @@ async function launch(useLucy: boolean): Promise<void> {
   } catch (err) {
     instance.stop();
     instance = null;
-    lucyBtn.disabled = false;
-    cameraBtn.disabled = false;
+    restoreButtons();
     errorEl.textContent = err instanceof Error ? err.message : String(err);
     errorEl.classList.remove('hidden');
     console.error(err);
   }
 }
 
-lucyBtn.addEventListener('click', () => {
+/** Both Lucy-backed buttons need a key first; camera-only never does. */
+function launchWithLucy(btn: HTMLButtonElement, dimensions?: Dimension[]): void {
   if (existing.source !== 'env' && !keyInput.value.trim()) {
     errorEl.textContent = 'Paste a Decart API key, or start camera-only.';
     errorEl.classList.remove('hidden');
     keyInput.focus();
     return;
   }
-  lucyBtn.textContent = 'Starting…';
-  void launch(true);
-});
+  btn.textContent = 'Starting…';
+  void launch(true, dimensions);
+}
+
+lucyBtn.addEventListener('click', () => launchWithLucy(lucyBtn));
+
+couplesBtn.addEventListener('click', () => launchWithLucy(couplesBtn, COUPLES_DIMENSIONS));
 
 cameraBtn.addEventListener('click', () => {
   cameraBtn.textContent = 'Starting…';
@@ -157,6 +178,5 @@ if (!navigator.mediaDevices?.getUserMedia) {
   errorEl.textContent =
     'This browser has no camera API. Use a recent Chrome/Safari over https or localhost.';
   errorEl.classList.remove('hidden');
-  lucyBtn.disabled = true;
-  cameraBtn.disabled = true;
+  for (const [btn] of LAUNCH_BUTTONS) btn.disabled = true;
 }
