@@ -83,6 +83,11 @@ npm run dev     # then open http://localhost:5173
 Camera access needs a secure context, which `localhost` counts as. Grant the
 camera permission when the browser asks.
 
+The start screen uses the camera straight away — it renders the room as a field
+of ASCII characters behind the title, with a web that gathers around whoever is
+in frame. That runs entirely in your browser and is never uploaded; the camera
+is released the moment a session starts.
+
 Press **Start multiverse-hopping** and a short tutorial will walk you through
 the gesture — where to put your hands, and how to jump. It plays while the
 stream is warming up, so it costs you nothing but the time you would have spent

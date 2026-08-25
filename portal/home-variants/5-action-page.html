@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>V5 · Action Page</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Barlow:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     VARIANT 5 — "THE ACTION PAGE"
+     Not the cover — the page where something happens. Speed lines
+     converge on the button; the copy sits in tilted panels; the
+     button is a starburst you cannot miss.
+     Signature element: the starburst CTA the whole page aims at.
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; }
+
+  :root {
+    --night: #131048;
+    --night2: #2a0f5e;
+    --paper: #fff8ec;
+    --ink: #16151c;
+    --red: #ff3d2e;
+    --yellow: #ffd400;
+    --cyan: #29d9ff;
+    --pink: #ff2e88;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    background:
+      radial-gradient(120% 90% at 50% 110%, var(--night2) 0%, var(--night) 55%, #0a0830 100%);
+    font-family: Barlow, system-ui, sans-serif;
+    overflow: hidden;
+    color: var(--paper);
+  }
+
+  /* speed lines: two stacked conic fans converging low-centre,
+     where the button is */
+  .lines, .lines2 {
+    position: fixed;
+    left: 50%;
+    top: 78%;
+    width: 300vmax;
+    height: 300vmax;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .lines {
+    background: repeating-conic-gradient(from 0deg,
+      rgba(255, 255, 255, 0.05) 0deg 1.1deg,
+      transparent 1.1deg 7deg);
+  }
+  .lines2 {
+    background: repeating-conic-gradient(from 3.2deg,
+      rgba(41, 217, 255, 0.045) 0deg 0.7deg,
+      transparent 0.7deg 11deg);
+    animation: spin 90s linear infinite;
+  }
+  @keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+  /* Fixed full-viewport wrapper rather than a grid on <body>: browser
+     extensions inject divs into body, and a body grid hands them a row. */
+  .page {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: clamp(18px, 3.6vh, 34px);
+    text-align: center;
+    padding: 24px;
+  }
+
+  /* masthead with thick comic outline */
+  h1 {
+    font-family: Bangers, Impact, sans-serif;
+    font-weight: 400;
+    font-size: clamp(64px, 14vw, 138px);
+    line-height: 0.92;
+    letter-spacing: 0.02em;
+    color: var(--yellow);
+    user-select: none;
+    cursor: default;
+    transform: rotate(-3deg);
+    -webkit-text-stroke: 3px var(--ink);
+    text-shadow:
+      4px 4px 0 var(--ink),
+      8px 8px 0 var(--red),
+      12px 12px 0 var(--ink);
+  }
+
+  /* tagline: a proper narration box, torn a little off-level */
+  .panel {
+    background: var(--paper);
+    color: var(--ink);
+    border: 3px solid var(--ink);
+    box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.5);
+    padding: 13px 22px;
+    max-width: 46ch;
+    font-size: clamp(14.5px, 2vw, 17px);
+    font-weight: 600;
+    line-height: 1.45;
+    transform: rotate(1.4deg);
+  }
+
+  .key-note {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    color: rgba(255, 248, 236, 0.7);
+    transform: rotate(-0.6deg);
+    /* sits above the starburst's upper spikes */
+    position: relative;
+    z-index: 3;
+    text-shadow: 0 1px 6px rgba(10, 8, 48, 0.9), 0 0 14px rgba(10, 8, 48, 0.8);
+  }
+
+  /* ---- the starburst button ------------------------------------ */
+  .burst-wrap {
+    position: relative;
+    margin-top: clamp(4px, 2vh, 18px);
+    display: grid;
+    place-items: center;
+  }
+
+  /* the star: two rotated jagged polygons behind the button */
+  .burst-wrap::before, .burst-wrap::after {
+    content: '';
+    position: absolute;
+    width: 180%;
+    height: 240%;
+    z-index: -1;
+    clip-path: polygon(
+      50% 0%, 59% 27%, 85% 12%, 72% 38%, 100% 40%, 76% 57%,
+      95% 78%, 65% 70%, 62% 100%, 50% 74%, 38% 100%, 35% 70%,
+      5% 78%, 24% 57%, 0% 40%, 28% 38%, 15% 12%, 41% 27%);
+  }
+  .burst-wrap::before {
+    background: var(--red);
+    transform: rotate(10deg) scale(1.14);
+  }
+  .burst-wrap::after {
+    background: var(--yellow);
+    transform: rotate(-6deg);
+  }
+
+  button {
+    font-family: Bangers, Impact, sans-serif;
+    font-size: clamp(24px, 4.4vw, 34px);
+    letter-spacing: 0.05em;
+    color: var(--ink);
+    background: transparent;
+    border: none;
+    padding: 26px 30px;
+    cursor: pointer;
+    transform: rotate(-2deg);
+    transition: transform 0.1s ease;
+  }
+  .burst-wrap:hover { animation: pow 0.35s ease; }
+  .burst-wrap:hover button { transform: rotate(-2deg) scale(1.06); }
+  button:active { transform: rotate(-2deg) scale(0.95); }
+  @keyframes pow {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.07) rotate(1.5deg); }
+    100% { transform: scale(1); }
+  }
+
+  /* onomatopoeia stickers in the corners */
+  .fx {
+    position: fixed;
+    font-family: Bangers, Impact, sans-serif;
+    color: var(--cyan);
+    -webkit-text-stroke: 2px var(--ink);
+    text-shadow: 3px 3px 0 var(--ink);
+    user-select: none;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .fx.thwip {
+    top: 9%; right: 7%;
+    font-size: clamp(26px, 4.6vw, 48px);
+    transform: rotate(9deg);
+    color: var(--pink);
+  }
+  .fx.vwomm {
+    bottom: 9%; left: 6%;
+    font-size: clamp(22px, 3.8vw, 40px);
+    transform: rotate(-8deg);
+  }
+
+  /* halftone floor fade at the bottom, like a printed shadow */
+  .floor {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    height: 26vh;
+    background:
+      radial-gradient(circle at 1.5px 1.5px, rgba(0, 0, 0, 0.5) 1.2px, transparent 1.8px);
+    background-size: 9px 9px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black);
+    mask-image: linear-gradient(to bottom, transparent, black);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="lines"></div>
+  <div class="lines2"></div>
+  <div class="floor"></div>
+  <div class="fx thwip">THWIP!</div>
+  <div class="fx vwomm">VWOMM…</div>
+
+  <main class="page">
+    <h1 id="title">VerseJumper</h1>
+    <p class="panel">Open a portal with your hands and jump between Spider-Verse
+      dimensions — live.</p>
+    <p class="key-note">Set DECART API KEY at portal/.env.local</p>
+    <div class="burst-wrap">
+      <button id="start-lucy">Start multiverse-hopping</button>
+    </div>
+  </main>
+</body>
+</html>

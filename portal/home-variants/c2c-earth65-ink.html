@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>C2c · Earth-65 Ink</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     C2 RIFF — "EARTH-65 INK"
+     The same mirror-and-web, graded into Gwen's hood: shadows
+     print in hot pink, highlights in teal, and the constellation
+     threads in soft white between the two inks.
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; }
+  :root {
+    --bg: #0d0812; --fg: #f2eefc; --muted: #a294b8;
+    --pink: #ff2e97; --teal: #00e0d0;
+  }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--fg); font-family: Inter, system-ui, sans-serif; overflow: hidden; }
+
+  canvas#ascii, canvas#web {
+    position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
+  }
+  canvas#web { z-index: 1; }
+
+  .scrim {
+    position: fixed; inset: 0; pointer-events: none; z-index: 2;
+    background: radial-gradient(46% 42% at 50% 50%,
+      rgba(13, 8, 18, 0.84) 0%, rgba(13, 8, 18, 0.52) 60%, transparent 100%);
+  }
+
+  .content {
+    position: fixed; inset: 0; z-index: 3;
+    display: grid; align-content: center; justify-items: center; gap: 18px;
+    text-align: center; padding: 24px; pointer-events: none;
+  }
+  .content > * { pointer-events: auto; }
+
+  h1 {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700;
+    font-size: clamp(44px, 8.5vw, 96px); line-height: 1; letter-spacing: -0.045em;
+    user-select: none; cursor: default;
+  }
+  /* the split mask: Verse in pink, Jumper in teal */
+  h1 .a { color: var(--pink); }
+  h1 .b { color: var(--teal); }
+  .tag { max-width: 44ch; font-size: clamp(15px, 2vw, 18px); line-height: 1.55; color: var(--muted); }
+  .key-note {
+    font-family: ui-monospace, monospace; font-size: 12.5px;
+    letter-spacing: 0.05em; color: #6d6184;
+  }
+  button {
+    margin-top: 10px; font: 500 15.5px/1 Inter, sans-serif; color: #fff;
+    background: linear-gradient(100deg, var(--pink), #b44bd6 60%, var(--teal) 130%);
+    border: none; border-radius: 999px; padding: 15px 32px;
+    cursor: pointer; transition: box-shadow 0.3s ease, transform 0.15s ease;
+  }
+  button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 6px rgba(255, 46, 151, 0.12), 0 0 44px rgba(255, 46, 151, 0.35);
+  }
+  button:active { transform: translateY(1px); }
+
+  .cam-note {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 0.22em;
+    text-transform: uppercase; color: rgba(162, 148, 184, 0.55); z-index: 3; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+  <canvas id="ascii"></canvas>
+  <canvas id="web"></canvas>
+  <div class="scrim"></div>
+
+  <div class="content">
+    <h1 id="title"><span class="a">Verse</span><span class="b">Jumper</span></h1>
+    <p class="tag">Open a portal with your hands and jump between Spider-Verse
+      dimensions — live.</p>
+    <p class="key-note">Set DECART API KEY at portal/.env.local</p>
+    <button id="start-lucy">Start multiverse-hopping</button>
+  </div>
+
+  <!-- empty until something goes wrong: it exists only to explain a dead camera -->
+  <div class="cam-note" id="cam-note"></div>
+
+<script>
+const RAMP = ' .:-=+*#%@';
+const CELL_W = 9, CELL_H = 15;
+let cols = 0, rows = 0;
+let lumGrid = null;
+
+const ascii = document.getElementById('ascii');
+const actx = ascii.getContext('2d');
+const note = document.getElementById('cam-note');
+const sampler = document.createElement('canvas');
+const sctx = sampler.getContext('2d', { willReadFrequently: true });
+const video = document.createElement('video');
+video.muted = true; video.playsInline = true;
+
+const web = document.getElementById('web');
+const wctx = web.getContext('2d');
+let W = 0, H = 0;
+
+function resize() {
+  W = innerWidth; H = innerHeight;
+  ascii.width = W; ascii.height = H;
+  web.width = W; web.height = H;
+  cols = Math.ceil(W / CELL_W); rows = Math.ceil(H / CELL_H);
+  sampler.width = cols; sampler.height = rows;
+  lumGrid = new Float32Array(cols * rows);
+}
+addEventListener('resize', resize);
+resize();
+
+function lumAt(x, y) {
+  if (!lumGrid) return 0;
+  const cx = Math.max(0, Math.min(cols - 1, Math.floor(x / CELL_W)));
+  const cy = Math.max(0, Math.min(rows - 1, Math.floor(y / CELL_H)));
+  return lumGrid[cy * cols + cx];
+}
+
+function asciiFrame() {
+  if (video.readyState >= 2) {
+    const va = video.videoWidth / video.videoHeight;
+    const ca = W / H;
+    let sw = video.videoWidth, sh = video.videoHeight, sx = 0, sy = 0;
+    if (va > ca) { sw = sh * ca; sx = (video.videoWidth - sw) / 2; }
+    else { sh = sw / ca; sy = (video.videoHeight - sh) / 2; }
+    sctx.save(); sctx.scale(-1, 1);
+    sctx.drawImage(video, sx, sy, sw, sh, -cols, 0, cols, rows);
+    sctx.restore();
+    const px = sctx.getImageData(0, 0, cols, rows).data;
+
+    let sum = 0;
+    for (let c = 0, i = 0; c < lumGrid.length; c++, i += 4) {
+      const l = (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255;
+      lumGrid[c] = l; sum += l;
+    }
+    const gain = Math.min(6, Math.max(1, 0.45 / (sum / lumGrid.length + 0.001)));
+    if (gain > 1) for (let c = 0; c < lumGrid.length; c++) lumGrid[c] = Math.min(1, lumGrid[c] * gain);
+
+    actx.setTransform(1, 0, 0, 1, 0, 0);
+    actx.fillStyle = '#0d0812';
+    actx.fillRect(0, 0, W, H);
+    actx.font = `${CELL_H - 2}px ui-monospace, Menlo, monospace`;
+    actx.textBaseline = 'top';
+    // The font's natural advance is narrower than CELL_W, which left a dead
+    // band at the right edge — scale x so one glyph lands on exactly one cell.
+    const adv = actx.measureText('M').width || CELL_W;
+    actx.setTransform(CELL_W / adv, 0, 0, 1, 0, 0);
+    // The duotone: pink prints the shadows-to-midtones, teal the highlights —
+    // the same split as her hood lining.
+    for (let pass = 0; pass < 2; pass++) {
+      actx.fillStyle = pass === 0 ? 'rgba(255, 46, 151, 0.34)' : 'rgba(0, 224, 208, 0.85)';
+      for (let y = 0; y < rows; y++) {
+        let line = '';
+        for (let x = 0; x < cols; x++) {
+          const lum = lumGrid[y * cols + x];
+          const bright = lum > 0.58;
+          line += (pass === 0 ? !bright : bright)
+            ? RAMP[Math.min(RAMP.length - 1, Math.floor(lum * RAMP.length))] : ' ';
+        }
+        actx.fillText(line, 0, y * CELL_H);
+      }
+    }
+  }
+  requestAnimationFrame(asciiFrame);
+}
+
+// Raced against a timeout: with the camera held open by other tabs, Chrome
+// can leave this promise pending forever rather than rejecting it.
+Promise.race([
+  navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 360 } }),
+  new Promise((_, rej) => setTimeout(() => rej(new Error('camera busy')), 6000)),
+])
+  .then(s => { video.srcObject = s; return video.play(); })
+  .then(() => requestAnimationFrame(asciiFrame))
+  .catch(() => {
+    note.textContent = 'camera unavailable or busy — close other tabs using it, then reload';
+  });
+
+/* ---- the constellation: white silk between the inks ---- */
+const COUNT = Math.min(110, Math.floor((W * H) / 16000));
+const LINK = 130, MOUSE_LINK = 190;
+const nodes = Array.from({ length: COUNT }, () => ({
+  x: Math.random() * W, y: Math.random() * H,
+  vx: (Math.random() - 0.5) * 0.25, vy: (Math.random() - 0.5) * 0.25,
+  r: 1 + Math.random() * 1.6,
+}));
+const mouse = { x: -9999, y: -9999 };
+addEventListener('pointermove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+addEventListener('pointerleave', () => { mouse.x = -9999; mouse.y = -9999; });
+
+function webFrame() {
+  wctx.clearRect(0, 0, W, H);
+  const STEP = 26;
+  for (const n of nodes) {
+    const gx = lumAt(n.x + STEP, n.y) - lumAt(n.x - STEP, n.y);
+    const gy = lumAt(n.x, n.y + STEP) - lumAt(n.x, n.y - STEP);
+    n.vx += gx * 0.05; n.vy += gy * 0.05;
+    n.vx *= 0.985; n.vy *= 0.985;
+    n.x += n.vx; n.y += n.vy;
+    if (n.x < 0 || n.x > W) n.vx *= -1;
+    if (n.y < 0 || n.y > H) n.vy *= -1;
+    n.x = Math.max(0, Math.min(W, n.x));
+    n.y = Math.max(0, Math.min(H, n.y));
+  }
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+    for (let j = i + 1; j < nodes.length; j++) {
+      const b = nodes[j];
+      const dx = a.x - b.x, dy = a.y - b.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > LINK * LINK) continue;
+      const t = 1 - Math.sqrt(d2) / LINK;
+      wctx.strokeStyle = `rgba(242, 238, 252, ${0.13 * t})`;
+      wctx.lineWidth = 1;
+      wctx.beginPath(); wctx.moveTo(a.x, a.y); wctx.lineTo(b.x, b.y); wctx.stroke();
+    }
+    const mdx = a.x - mouse.x, mdy = a.y - mouse.y;
+    const md2 = mdx * mdx + mdy * mdy;
+    if (md2 < MOUSE_LINK * MOUSE_LINK) {
+      const t = 1 - Math.sqrt(md2) / MOUSE_LINK;
+      // cursor silk goes hot pink — the hand is Gwen's
+      wctx.strokeStyle = `rgba(255, 46, 151, ${0.45 * t})`;
+      wctx.lineWidth = 1.2;
+      wctx.beginPath(); wctx.moveTo(a.x, a.y); wctx.lineTo(mouse.x, mouse.y); wctx.stroke();
+      a.vx -= mdx * 0.000012; a.vy -= mdy * 0.000012;
+    }
+  }
+  for (const n of nodes) {
+    wctx.fillStyle = 'rgba(242, 238, 252, 0.4)';
+    wctx.beginPath(); wctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); wctx.fill();
+  }
+  requestAnimationFrame(webFrame);
+}
+requestAnimationFrame(webFrame);
+</script>
+</body>
+</html>

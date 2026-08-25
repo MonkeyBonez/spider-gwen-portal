@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>C5 · Portal × Action</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Barlow:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     COMBO 5 — PORTAL SHADER × ACTION PAGE
+     The splash panel: a live aperture burning in the comic's
+     night sky, speed lines converging straight into it, and the
+     starburst button floating in front of the glow.
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; }
+  :root {
+    --night: #131048; --paper: #fff8ec; --ink: #16151c;
+    --red: #ff3d2e; --yellow: #ffd400; --cyan: #29d9ff; --pink: #ff2e88;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--night);
+    font-family: Barlow, system-ui, sans-serif;
+    overflow: hidden; color: var(--paper);
+  }
+
+  canvas#portal { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+
+  /* speed lines aimed at the aperture, not the button this time */
+  .lines, .lines2 {
+    position: fixed; left: 50%; top: 50%;
+    width: 300vmax; height: 300vmax;
+    transform: translate(-50%, -50%);
+    pointer-events: none; z-index: 1;
+  }
+  .lines {
+    background: repeating-conic-gradient(from 0deg,
+      rgba(255, 255, 255, 0.045) 0deg 1.1deg, transparent 1.1deg 7deg);
+    /* the lines die inside the ring — the portal eats them */
+    -webkit-mask-image: radial-gradient(circle, transparent 0 24vmin, black 38vmin);
+    mask-image: radial-gradient(circle, transparent 0 24vmin, black 38vmin);
+  }
+  .lines2 {
+    background: repeating-conic-gradient(from 3.2deg,
+      rgba(41, 217, 255, 0.05) 0deg 0.7deg, transparent 0.7deg 11deg);
+    -webkit-mask-image: radial-gradient(circle, transparent 0 24vmin, black 38vmin);
+    mask-image: radial-gradient(circle, transparent 0 24vmin, black 38vmin);
+    animation: spin 90s linear infinite;
+  }
+  @keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+  .page {
+    position: fixed; inset: 0; z-index: 2;
+    display: grid; align-content: center; justify-items: center;
+    gap: clamp(16px, 3vh, 28px);
+    text-align: center; padding: 24px;
+  }
+  h1 {
+    font-family: Bangers, Impact, sans-serif; font-weight: 400;
+    font-size: clamp(60px, 13vw, 128px); line-height: 0.92; letter-spacing: 0.02em;
+    color: var(--yellow); user-select: none; cursor: default; transform: rotate(-3deg);
+    -webkit-text-stroke: 3px var(--ink);
+    text-shadow: 4px 4px 0 var(--ink), 8px 8px 0 var(--red), 12px 12px 0 var(--ink);
+  }
+  .panel {
+    background: var(--paper); color: var(--ink);
+    border: 3px solid var(--ink); box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.5);
+    padding: 13px 22px; max-width: 46ch;
+    font-size: clamp(14.5px, 2vw, 17px); font-weight: 600; line-height: 1.45;
+    transform: rotate(1.4deg);
+  }
+  .key-note {
+    font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: 0.05em;
+    color: rgba(255, 248, 236, 0.75); transform: rotate(-0.6deg);
+    position: relative; z-index: 3;
+    text-shadow: 0 1px 6px rgba(10, 8, 48, 0.9), 0 0 14px rgba(10, 8, 48, 0.8);
+  }
+
+  .burst-wrap { position: relative; margin-top: clamp(2px, 1.6vh, 14px); display: grid; place-items: center; }
+  .burst-wrap::before, .burst-wrap::after {
+    content: ''; position: absolute; width: 180%; height: 240%; z-index: -1;
+    clip-path: polygon(50% 0%, 59% 27%, 85% 12%, 72% 38%, 100% 40%, 76% 57%,
+      95% 78%, 65% 70%, 62% 100%, 50% 74%, 38% 100%, 35% 70%,
+      5% 78%, 24% 57%, 0% 40%, 28% 38%, 15% 12%, 41% 27%);
+  }
+  .burst-wrap::before { background: var(--red); transform: rotate(10deg) scale(1.14); }
+  .burst-wrap::after { background: var(--yellow); transform: rotate(-6deg); }
+  button {
+    font-family: Bangers, Impact, sans-serif;
+    font-size: clamp(22px, 4vw, 32px); letter-spacing: 0.05em;
+    color: var(--ink); background: transparent; border: none;
+    padding: 24px 28px; cursor: pointer; transform: rotate(-2deg);
+    transition: transform 0.1s ease;
+  }
+  .burst-wrap:hover { animation: pow 0.35s ease; }
+  .burst-wrap:hover button { transform: rotate(-2deg) scale(1.06); }
+  button:active { transform: rotate(-2deg) scale(0.95); }
+  @keyframes pow { 0% { transform: scale(1); } 40% { transform: scale(1.07) rotate(1.5deg); } 100% { transform: scale(1); } }
+
+  .fx {
+    position: fixed; font-family: Bangers, Impact, sans-serif;
+    color: var(--cyan); -webkit-text-stroke: 2px var(--ink);
+    text-shadow: 3px 3px 0 var(--ink);
+    user-select: none; pointer-events: none; z-index: 1;
+  }
+  .fx.thwip { top: 9%; right: 7%; font-size: clamp(26px, 4.6vw, 48px); transform: rotate(9deg); color: var(--pink); }
+  .fx.vwomm { bottom: 9%; left: 6%; font-size: clamp(22px, 3.8vw, 40px); transform: rotate(-8deg); }
+</style>
+</head>
+<body>
+  <canvas id="portal"></canvas>
+  <div class="lines"></div>
+  <div class="lines2"></div>
+  <div class="fx thwip">THWIP!</div>
+  <div class="fx vwomm">VWOMM…</div>
+
+  <main class="page">
+    <h1 id="title">VerseJumper</h1>
+    <p class="panel">Open a portal with your hands and jump between Spider-Verse
+      dimensions — live.</p>
+    <p class="key-note">Set DECART API KEY at portal/.env.local</p>
+    <div class="burst-wrap">
+      <button id="start-lucy">Start multiverse-hopping</button>
+    </div>
+  </main>
+
+<script>
+const canvas = document.getElementById('portal');
+const gl = canvas.getContext('webgl', { antialias: false });
+const VERT = 'attribute vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }';
+// V3's aperture over the comic's night-purple, so the two worlds share a sky
+const FRAG = `
+precision highp float;
+uniform vec2 res; uniform float t;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+float noise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x), u.y); }
+float fbm(vec2 p){ float v=0., a=.5;
+  for(int i=0;i<5;i++){ v+=a*noise(p); p=p*2.03+vec2(17.,9.2); a*=.5; } return v; }
+void main(){
+  vec2 frag = gl_FragCoord.xy;
+  vec2 uv = (frag - .5*res) / min(res.x, res.y);
+  float r = length(uv); float ang = atan(uv.y, uv.x);
+  float swirl = ang + 1.4*exp(-2.2*r)*sin(t*.22) + .55*fbm(uv*2.2 + t*.06);
+  float wobble = .06*fbm(vec2(swirl*2., r*5. - t*.12));
+  float ring = abs(r - .34 + wobble);
+  float glow = exp(-ring*9.); float core = exp(-ring*26.);
+  vec3 magenta = vec3(1.,.16,.62); vec3 cyan = vec3(.16,.85,1.); vec3 amber = vec3(1.,.62,.12);
+  float k = .5+.5*sin(swirl*3. + t*.35); float k2 = .5+.5*sin(swirl*3. - 2.1 + t*.22);
+  vec3 col = mix(magenta, cyan, k); col = mix(col, amber, .35*k2);
+  // the comic night: purple radial wash instead of V3's black
+  float vy = frag.y / res.y;
+  vec3 sky = mix(vec3(.04,.03,.14), vec3(.13,.06,.3), pow(1.-vy, 1.4));
+  float inside = smoothstep(.34 + wobble, .10, r);
+  float stars = pow(noise(uv*60. + floor(t*.5)*7.), 18.) * 5.;
+  vec3 interior = mix(vec3(.01,.015,.03), vec3(.05,.02,.1), r*3.) + stars*vec3(.6,.8,1.);
+  vec3 outCol = sky * (1. - inside);
+  outCol += col * (glow*.55 + core*1.15);
+  outCol += interior * inside;
+  outCol += (hash(frag + t) - .5) * .02;
+  gl_FragColor = vec4(outCol, 1.);
+}`;
+function sh(type, src){ const s = gl.createShader(type); gl.shaderSource(s, src);
+  gl.compileShader(s); if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
+gl.linkProgram(prog); gl.useProgram(prog);
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+const uRes = gl.getUniformLocation(prog, 'res');
+const uT = gl.getUniformLocation(prog, 't');
+function resize(){
+  canvas.width = Math.floor(innerWidth/2); canvas.height = Math.floor(innerHeight/2);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+addEventListener('resize', resize);
+resize();
+function frame(ms){
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uT, ms/1000);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>C4 · Portal × Web</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;800&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     COMBO 4 — PORTAL SHADER × WEB CONSTELLATION
+     The aperture breathes in the middle of the room, and the
+     constellation is caught in its pull: nodes spiral in orbit
+     around the ring while the cursor still knits its own threads.
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; }
+  :root { --bg: #05060a; --fg: #eef0f6; --muted: #79809299; --accent: #00ffb4; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--fg); font-family: Inter, system-ui, sans-serif; overflow: hidden; }
+
+  canvas#portal, canvas#web {
+    position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
+  }
+  canvas#web { z-index: 1; }
+
+  .content {
+    position: fixed; inset: 0; z-index: 2;
+    display: grid; align-content: center; justify-items: center; gap: 20px;
+    text-align: center; padding: 24px; pointer-events: none;
+  }
+  .content > * { pointer-events: auto; }
+
+  h1 {
+    font-family: Unbounded, sans-serif; font-weight: 800;
+    font-size: clamp(38px, 7.4vw, 84px); line-height: 1; letter-spacing: -0.02em;
+    user-select: none; cursor: default;
+    text-shadow: 0 0 40px rgba(255, 60, 170, 0.45), 0 0 90px rgba(0, 200, 255, 0.3);
+  }
+  .tag {
+    max-width: 44ch; font-size: clamp(15px, 2vw, 18px); line-height: 1.55;
+    color: #b9bfd0; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8);
+  }
+  .key-note {
+    font-family: ui-monospace, monospace; font-size: 12.5px; letter-spacing: 0.05em;
+    color: #a7aec0; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.95), 0 0 18px rgba(0, 0, 0, 0.9);
+  }
+  button {
+    margin-top: 8px; font: 500 15.5px/1 Inter, sans-serif; color: var(--bg);
+    background: var(--fg); border: none; border-radius: 999px; padding: 15px 32px;
+    cursor: pointer;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.14), 0 0 34px rgba(255,60,170,0.35), 0 0 80px rgba(0,200,255,0.18);
+    transition: box-shadow 0.25s ease, transform 0.15s ease;
+  }
+  button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.2), 0 0 46px rgba(255,60,170,0.6), 0 0 110px rgba(0,200,255,0.35);
+  }
+  button:active { transform: translateY(1px); }
+</style>
+</head>
+<body>
+  <canvas id="portal"></canvas>
+  <canvas id="web"></canvas>
+
+  <div class="content">
+    <h1 id="title">VerseJumper</h1>
+    <p class="tag">Open a portal with your hands and jump between Spider-Verse
+      dimensions — live.</p>
+    <p class="key-note">Set DECART API KEY at portal/.env.local</p>
+    <button id="start-lucy">Start multiverse-hopping</button>
+  </div>
+
+<script>
+/* ---- the aperture (V3's shader, unchanged) ---- */
+const portal = document.getElementById('portal');
+const gl = portal.getContext('webgl', { antialias: false });
+const VERT = 'attribute vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }';
+const FRAG = `
+precision highp float;
+uniform vec2 res; uniform float t;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+float noise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x), u.y); }
+float fbm(vec2 p){ float v=0., a=.5;
+  for(int i=0;i<5;i++){ v+=a*noise(p); p=p*2.03+vec2(17.,9.2); a*=.5; } return v; }
+void main(){
+  vec2 uv = (gl_FragCoord.xy - .5*res) / min(res.x, res.y);
+  float r = length(uv); float ang = atan(uv.y, uv.x);
+  float swirl = ang + 1.4*exp(-2.2*r)*sin(t*.22) + .55*fbm(uv*2.2 + t*.06);
+  float wobble = .06*fbm(vec2(swirl*2., r*5. - t*.12));
+  float ring = abs(r - .34 + wobble);
+  float glow = exp(-ring*9.); float core = exp(-ring*26.);
+  vec3 magenta = vec3(1.,.16,.62); vec3 cyan = vec3(0.,.82,1.); vec3 amber = vec3(1.,.62,.12);
+  float k = .5+.5*sin(swirl*3. + t*.35); float k2 = .5+.5*sin(swirl*3. - 2.1 + t*.22);
+  vec3 col = mix(magenta, cyan, k); col = mix(col, amber, .35*k2);
+  float inside = smoothstep(.34 + wobble, .10, r);
+  float stars = pow(noise(uv*60. + floor(t*.5)*7.), 18.) * 5.;
+  vec3 interior = mix(vec3(.01,.015,.03), vec3(.05,.02,.1), r*3.) + stars*vec3(.6,.8,1.);
+  vec3 outCol = col * (glow*.55 + core*1.15);
+  outCol += interior * inside;
+  outCol *= 1. - smoothstep(.55, 1.05, r) * .85;
+  outCol += (hash(gl_FragCoord.xy + t) - .5) * .02;
+  gl_FragColor = vec4(outCol, 1.);
+}`;
+function sh(type, src){ const s = gl.createShader(type); gl.shaderSource(s, src);
+  gl.compileShader(s); if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
+gl.linkProgram(prog); gl.useProgram(prog);
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+const uRes = gl.getUniformLocation(prog, 'res');
+const uT = gl.getUniformLocation(prog, 't');
+
+/* ---- the constellation, in orbit ---- */
+const web = document.getElementById('web');
+const wctx = web.getContext('2d');
+let W = 0, H = 0, RING = 0;
+
+function resize() {
+  W = innerWidth; H = innerHeight;
+  web.width = W; web.height = H;
+  portal.width = Math.floor(W / 2); portal.height = Math.floor(H / 2);
+  gl.viewport(0, 0, portal.width, portal.height);
+  RING = 0.34 * Math.min(W, H); // same radius the shader draws, in CSS px
+}
+addEventListener('resize', resize);
+resize();
+
+const COUNT = Math.min(110, Math.floor((W * H) / 16000));
+const LINK = 130, MOUSE_LINK = 190;
+const nodes = Array.from({ length: COUNT }, () => ({
+  x: Math.random() * W, y: Math.random() * H,
+  vx: (Math.random() - 0.5) * 0.25, vy: (Math.random() - 0.5) * 0.25,
+  r: 1 + Math.random() * 1.6,
+}));
+const mouse = { x: -9999, y: -9999 };
+addEventListener('pointermove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+addEventListener('pointerleave', () => { mouse.x = -9999; mouse.y = -9999; });
+
+function frame(ms) {
+  gl.uniform2f(uRes, portal.width, portal.height);
+  gl.uniform1f(uT, ms / 1000);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  wctx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  for (const n of nodes) {
+    const dx = n.x - cx, dy = n.y - cy;
+    const d = Math.hypot(dx, dy) || 1;
+    // spring toward the ring radius: too far falls in, too close is pushed out
+    const pull = (d - RING) * -0.00016;
+    n.vx += (dx / d) * pull * d * 0.01;
+    n.vy += (dy / d) * pull * d * 0.01;
+    // and a gentle tangential push — the orbit itself
+    n.vx += (-dy / d) * 0.012;
+    n.vy += (dx / d) * 0.012;
+    n.vx *= 0.995; n.vy *= 0.995;
+    n.x += n.vx; n.y += n.vy;
+    if (n.x < 0 || n.x > W) n.vx *= -1;
+    if (n.y < 0 || n.y > H) n.vy *= -1;
+  }
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+    for (let j = i + 1; j < nodes.length; j++) {
+      const b = nodes[j];
+      const dx = a.x - b.x, dy = a.y - b.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > LINK * LINK) continue;
+      const t = 1 - Math.sqrt(d2) / LINK;
+      wctx.strokeStyle = `rgba(0, 255, 180, ${0.15 * t})`;
+      wctx.lineWidth = 1;
+      wctx.beginPath(); wctx.moveTo(a.x, a.y); wctx.lineTo(b.x, b.y); wctx.stroke();
+    }
+    const mdx = a.x - mouse.x, mdy = a.y - mouse.y;
+    const md2 = mdx * mdx + mdy * mdy;
+    if (md2 < MOUSE_LINK * MOUSE_LINK) {
+      const t = 1 - Math.sqrt(md2) / MOUSE_LINK;
+      wctx.strokeStyle = `rgba(0, 255, 180, ${0.4 * t})`;
+      wctx.lineWidth = 1.2;
+      wctx.beginPath(); wctx.moveTo(a.x, a.y); wctx.lineTo(mouse.x, mouse.y); wctx.stroke();
+      a.vx -= mdx * 0.000012; a.vy -= mdy * 0.000012;
+    }
+  }
+  for (const n of nodes) {
+    wctx.fillStyle = 'rgba(231, 233, 238, 0.45)';
+    wctx.beginPath(); wctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); wctx.fill();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

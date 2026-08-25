@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>V7 · Print Poster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     VARIANT 7 — "THE ONE-SHEET"
+     A theatrical poster: the title is the landscape. Oversized
+     type runs off both edges in misregistered plates, stacked
+     like the Spider-Verse one-sheets; the copy is a small,
+     precise cluster pinned over it.
+     Signature element: type as scenery.
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; }
+
+  :root {
+    --sky1: #1b0b3a;
+    --sky2: #58135f;
+    --sky3: #c22a6c;
+    --fg: #fdf3ff;
+    --cyan: #3be8ff;
+    --magenta: #ff3ea5;
+    --yellow: #ffc93c;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    background: linear-gradient(178deg,
+      var(--sky1) 0%, var(--sky2) 46%, var(--sky3) 82%, #ff7847 105%);
+    color: var(--fg);
+    font-family: Barlow, system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  /* halftone sky: dots grow toward the horizon */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(circle at 1.5px 1.5px, rgba(255, 255, 255, 0.16) 1px, transparent 1.6px);
+    background-size: 12px 12px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 22%, black 90%);
+    mask-image: linear-gradient(to bottom, transparent 22%, black 90%);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* ---- the type landscape -------------------------------------- */
+  .stack {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    align-content: space-evenly;
+    overflow: hidden;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .row {
+    font-family: 'Archivo Black', Impact, sans-serif;
+    font-size: clamp(90px, 21vh, 240px);
+    line-height: 0.84;
+    letter-spacing: -0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    position: relative;
+  }
+
+  /* each row is a plate: outline only, except the hero row */
+  .row.ghost {
+    color: transparent;
+    -webkit-text-stroke: 2px rgba(253, 243, 255, 0.22);
+  }
+  .row.ghost.c { -webkit-text-stroke-color: rgba(59, 232, 255, 0.3); }
+  .row.ghost.m { -webkit-text-stroke-color: rgba(255, 62, 165, 0.34); }
+
+  /* the hero row: solid, with cyan+magenta plates slipping out */
+  .row.hero { color: var(--fg); z-index: 2; }
+  .row.hero::before, .row.hero::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+  }
+  .row.hero::before { color: var(--cyan);    transform: translate(-7px, 4px); opacity: 0.85; }
+  .row.hero::after  { color: var(--magenta); transform: translate(7px, -4px); opacity: 0.85; }
+
+  /* rows run off the edges at alternating offsets */
+  .row:nth-child(1) { transform: translateX(-6%); }
+  .row:nth-child(2) { transform: translateX(-18%); }
+  .row:nth-child(3) { transform: translateX(-2%); }
+  .row:nth-child(4) { transform: translateX(-24%); }
+  .row:nth-child(5) { transform: translateX(-10%); }
+
+  /* ---- the copy cluster ---------------------------------------- */
+  .cluster {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 14px;
+    text-align: center;
+    padding: 24px;
+    z-index: 3;
+  }
+
+  .card {
+    display: grid;
+    justify-items: center;
+    gap: 14px;
+    background: rgba(20, 8, 40, 0.72);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(253, 243, 255, 0.22);
+    padding: clamp(22px, 4.5vh, 40px) clamp(24px, 5vw, 52px);
+    max-width: min(92vw, 560px);
+  }
+  /* yellow registration corner ticks, like a print proof */
+  .card { position: relative; }
+  .card::before, .card::after {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    border: 2px solid var(--yellow);
+  }
+  .card::before { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+  .card::after  { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    color: var(--yellow);
+  }
+
+  .tag {
+    max-width: 40ch;
+    font-size: clamp(15px, 2vw, 17.5px);
+    line-height: 1.5;
+    font-weight: 500;
+  }
+
+  .key-note {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: rgba(253, 243, 255, 0.5);
+  }
+
+  button {
+    margin-top: 4px;
+    font: 600 15px/1 Barlow, sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #1b0b3a;
+    background: var(--yellow);
+    border: none;
+    padding: 15px 30px;
+    cursor: pointer;
+    box-shadow: 5px 5px 0 var(--magenta);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  button:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 8px 8px 0 var(--magenta), 11px 11px 0 var(--cyan);
+  }
+  button:active {
+    transform: translate(3px, 3px);
+    box-shadow: 1px 1px 0 var(--magenta);
+  }
+
+  /* billing block at the foot — posters always have one */
+  .billing {
+    position: fixed;
+    bottom: 12px;
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 9.5px;
+    font-weight: 500;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: rgba(253, 243, 255, 0.45);
+    z-index: 3;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="stack" aria-hidden="true">
+    <div class="row ghost c">VerseJumper</div>
+    <div class="row ghost m">VerseJumper</div>
+    <div class="row hero" data-text="VerseJumper">VerseJumper</div>
+    <div class="row ghost m">VerseJumper</div>
+    <div class="row ghost c">VerseJumper</div>
+  </div>
+
+  <div class="cluster">
+    <main class="card">
+      <p class="eyebrow" id="title">VerseJumper</p>
+      <p class="tag">Open a portal with your hands and jump between Spider-Verse
+        dimensions — live.</p>
+      <p class="key-note">Set DECART API KEY at portal/.env.local</p>
+      <button id="start-lucy">Start multiverse-hopping</button>
+    </main>
+  </div>
+
+  <div class="billing">your camera · your hands · every universe decart lucy can paint</div>
+</body>
+</html>

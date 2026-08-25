@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>V10 · Duotone Signal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     VARIANT 10 — "SIGNAL FROM EARTH-65"
+     The webcam runs full-bleed, colour-graded live into the
+     pink→teal Gwen duotone, with scanlines and an occasional
+     slice-glitch — a transmission from a universe over. The copy
+     sits on a scrim strip so it reads over any room.
+     Signature element: you, as the transmission.
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; }
+
+  :root {
+    --bg: #0b0714;
+    --fg: #f2eefc;
+    --muted: #a99fc4;
+    --pink: #ff2e97;
+    --teal: #00e0d0;
+  }
+
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  canvas#feed {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+  }
+
+  /* scanlines + gentle darkening toward the centre strip */
+  .grade {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(to bottom,
+        rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 4px),
+      linear-gradient(to bottom,
+        rgba(11, 7, 20, 0.55) 0%, transparent 26%,
+        transparent 74%, rgba(11, 7, 20, 0.6) 100%);
+    z-index: 1;
+  }
+
+  .center {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    z-index: 2;
+    padding: 0;
+  }
+
+  /* a full-width scrim band, like a lower-third that took over */
+  .band {
+    width: 100%;
+    display: grid;
+    justify-items: center;
+    gap: 14px;
+    text-align: center;
+    padding: clamp(26px, 5vh, 46px) 24px;
+    background: linear-gradient(to bottom,
+      transparent 0%, rgba(11, 7, 20, 0.82) 18%,
+      rgba(11, 7, 20, 0.82) 82%, transparent 100%);
+  }
+
+  h1 {
+    font-family: 'Archivo Black', Impact, sans-serif;
+    font-size: clamp(46px, 9vw, 104px);
+    line-height: 1;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+    user-select: none;
+    cursor: default;
+    position: relative;
+  }
+  /* permanent, quiet aberration — the signal is never quite tuned */
+  h1::before, h1::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    opacity: 0.6;
+  }
+  h1::before { color: var(--pink); transform: translate(-3px, 2px); z-index: -1; }
+  h1::after  { color: var(--teal); transform: translate(3px, -2px); z-index: -2; }
+
+  .tag {
+    max-width: 46ch;
+    font-size: clamp(15px, 2vw, 18px);
+    line-height: 1.55;
+    color: var(--muted);
+  }
+  .tag strong { color: var(--fg); font-weight: 500; }
+
+  .key-note {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: #837a9e;
+  }
+  .key-note::before { content: '▸ '; color: var(--teal); }
+
+  button {
+    margin-top: 6px;
+    font: 600 15.5px/1 'Space Grotesk', sans-serif;
+    letter-spacing: 0.02em;
+    color: #0b0714;
+    background: var(--fg);
+    border: none;
+    padding: 15px 34px;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.12s ease;
+  }
+  button::before, button::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    transition: transform 0.15s ease;
+  }
+  button::before { background: var(--pink); }
+  button::after  { background: var(--teal); }
+  button:hover::before { transform: translate(-5px, 4px); }
+  button:hover::after  { transform: translate(5px, -4px); }
+  button:active { transform: scale(0.97); }
+  button:active::before, button:active::after { transform: none; }
+
+  .cam-note {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: rgba(169, 159, 196, 0.5);
+    z-index: 2;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+  <canvas id="feed"></canvas>
+  <div class="grade"></div>
+
+  <div class="center">
+    <main class="band">
+      <h1 id="title" data-text="VerseJumper">VerseJumper</h1>
+      <p class="tag">Open a <strong>portal with your hands</strong> and jump between
+        Spider-Verse dimensions — live.</p>
+      <p class="key-note">Set DECART API KEY at portal/.env.local</p>
+      <button id="start-lucy">Start multiverse-hopping</button>
+    </main>
+  </div>
+
+  <div class="cam-note" id="cam-note">camera stays on this machine — nothing streams until you start</div>
+
+<script>
+const canvas = document.getElementById('feed');
+const ctx = canvas.getContext('2d');
+const note = document.getElementById('cam-note');
+
+const video = document.createElement('video');
+video.muted = true;
+video.playsInline = true;
+
+function resize() {
+  // Half-resolution: the grade is soft anyway, CSS upscales invisibly.
+  canvas.width = Math.floor(innerWidth / 2);
+  canvas.height = Math.floor(innerHeight / 2);
+}
+addEventListener('resize', resize);
+resize();
+
+// slice-glitch state: fires every few seconds for a couple hundred ms
+let glitchUntil = 0;
+let nextGlitch = 2000;
+
+function frame(now) {
+  if (video.readyState >= 2) {
+    const w = canvas.width, h = canvas.height;
+    const va = video.videoWidth / video.videoHeight;
+    const ca = w / h;
+    let sw = video.videoWidth, sh = video.videoHeight, sx = 0, sy = 0;
+    if (va > ca) { sw = sh * ca; sx = (video.videoWidth - sw) / 2; }
+    else { sh = sw / ca; sy = (video.videoHeight - sh) / 2; }
+
+    // 1. grayscale base, mirrored
+    ctx.save();
+    ctx.filter = 'grayscale(1) contrast(1.18) brightness(1.05)';
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, sx, sy, sw, sh, -w, 0, w, h);
+    ctx.restore();
+    ctx.filter = 'none';
+
+    // 2. duotone grade: multiply pulls highlights into the pink→teal ramp,
+    //    lighten lifts shadows into deep violet
+    ctx.globalCompositeOperation = 'multiply';
+    const ramp = ctx.createLinearGradient(0, 0, w, h);
+    ramp.addColorStop(0, '#ff2e97');
+    ramp.addColorStop(0.55, '#b44bd6');
+    ramp.addColorStop(1, '#00e0d0');
+    ctx.fillStyle = ramp;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'lighten';
+    ctx.fillStyle = '#1d0f33';
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'source-over';
+
+    // 3. the slice-glitch: horizontal bands of the finished frame thrown
+    //    sideways for a moment, like the transmission skipping
+    if (now > nextGlitch) {
+      glitchUntil = now + 160 + Math.random() * 180;
+      nextGlitch = now + 2600 + Math.random() * 3500;
+    }
+    if (now < glitchUntil) {
+      for (let i = 0; i < 5; i++) {
+        const bandY = Math.random() * h;
+        const bandH = 4 + Math.random() * h * 0.06;
+        const shift = (Math.random() - 0.5) * w * 0.12;
+        ctx.drawImage(canvas, 0, bandY, w, bandH, shift, bandY, w, bandH);
+      }
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+// Raced against a timeout: with the camera held open by other tabs, Chrome
+// can leave this promise pending forever rather than rejecting it.
+Promise.race([
+  navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 360 } }),
+  new Promise((_, rej) => setTimeout(() => rej(new Error('camera busy')), 6000)),
+])
+  .then(stream => {
+    video.srcObject = stream;
+    return video.play();
+  })
+  .then(() => requestAnimationFrame(frame))
+  .catch(() => {
+    note.textContent = 'camera unavailable or busy — close other tabs using it, then reload';
+  });
+</script>
+</body>
+</html>

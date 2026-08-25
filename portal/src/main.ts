@@ -1,5 +1,6 @@
 import './style.css';
 import { App } from './app';
+import { AsciiBackdrop } from './asciiBackdrop';
 import { COUPLES_DIMENSIONS, type Dimension } from './dimensions';
 import { resolveApiKey, storeApiKey } from './lucy';
 import { sessionLog } from './sessionLog';
@@ -30,7 +31,7 @@ app.innerHTML = `
       <div class="caption hidden" id="caption"></div>
     </div>
     <div class="start" id="start">
-      <h1 id="title" title="">VerseJumper</h1>
+      <h1 id="title" title="">Verse<span class="jump">Jumper</span></h1>
       <p>Open a portal with your hands and jump between Spider-Verse dimensions — live.</p>
 
       <div class="key-row" id="key-row">
@@ -84,6 +85,18 @@ if (existing.source === 'env') {
 
 let instance: App | null = null;
 
+/**
+ * The start screen watches the room while it waits — the camera as a field of
+ * glyphs, with a web knitting itself toward whoever is in frame. It is the
+ * app's thesis, running before anything has been pressed.
+ *
+ * It holds a camera track, so it is stopped for the duration of every session
+ * and started again on the way back. `start()` never rejects; a refused camera
+ * just leaves the constellation drifting.
+ */
+const backdrop = new AsciiBackdrop(startScreen);
+backdrop.start();
+
 function restoreButtons(): void {
   for (const [btn, label] of LAUNCH_BUTTONS) {
     btn.disabled = false;
@@ -98,6 +111,11 @@ async function launch(
 ): Promise<void> {
   for (const [btn] of LAUNCH_BUTTONS) btn.disabled = true;
   errorEl.classList.add('hidden');
+
+  // Before `new App(...)`, which opens the camera with its own capture
+  // constraints — two live tracks on one device is both wasteful and a way to
+  // inherit a resolution nobody asked for.
+  backdrop.stop();
 
   if (useLucy && existing.source !== 'env') storeApiKey(keyInput.value);
 
@@ -123,6 +141,7 @@ async function launch(
         instance = null;
         restoreButtons();
         startScreen.classList.remove('hidden');
+        backdrop.start();
       },
     },
   );
@@ -134,6 +153,8 @@ async function launch(
     instance.stop();
     instance = null;
     restoreButtons();
+    // The start screen never went away, so put its backdrop back too.
+    backdrop.start();
     errorEl.textContent = err instanceof Error ? err.message : String(err);
     errorEl.classList.remove('hidden');
     console.error(err);
@@ -182,9 +203,13 @@ cameraBtn.addEventListener('click', () => {
   void launch(false);
 });
 
-// A closed tab must not leave a paid stream running. `pagehide` fires in cases
-// `beforeunload` misses (bfcache, mobile), and disconnect is idempotent.
-window.addEventListener('pagehide', () => instance?.stop());
+// A closed tab must not leave a paid stream running, nor a camera light on.
+// `pagehide` fires in cases `beforeunload` misses (bfcache, mobile), and both
+// stops are idempotent.
+window.addEventListener('pagehide', () => {
+  instance?.stop();
+  backdrop.stop();
+});
 
 if (!navigator.mediaDevices?.getUserMedia) {
   errorEl.textContent =

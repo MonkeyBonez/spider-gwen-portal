@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>V1 · Halftone Cover</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     VARIANT 1 — "COMIC COVER"
+     A printed comic-book cover: warm paper, Ben-Day halftone dots,
+     CMYK plates slightly out of register on the masthead.
+     Signature element: the misregistered masthead.
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; }
+
+  :root {
+    --paper: #f3ead8;
+    --ink: #16151c;
+    --cyan: #00b3e3;
+    --magenta: #ff2e88;
+    --yellow: #ffd400;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    background: #0e0d13;
+    font-family: Inter, system-ui, sans-serif;
+  }
+
+  /* Fixed full-viewport wrapper rather than a grid on <body>: browser
+     extensions inject divs into body, and a body grid hands them a row. */
+  .desk {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+  }
+
+  /* The cover itself — a bordered page sitting on a dark desk */
+  .cover {
+    position: relative;
+    width: min(94vw, 150vh * 0.72, 680px);
+    aspect-ratio: 0.72;
+    background: var(--paper);
+    border: 4px solid var(--ink);
+    box-shadow:
+      10px 10px 0 rgba(0, 0, 0, 0.55),
+      inset 0 0 0 10px var(--paper),
+      inset 0 0 0 12px rgba(22, 21, 28, 0.16);
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  /* Ben-Day dots: three offset dot grids, one per plate, very low opacity */
+  .cover::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 2px 2px, var(--magenta) 1.1px, transparent 1.6px),
+      radial-gradient(circle at 5px 6px, var(--cyan) 1.1px, transparent 1.6px),
+      radial-gradient(circle at 8px 3px, var(--yellow) 1.4px, transparent 2px);
+    background-size: 11px 11px, 13px 13px, 12px 12px;
+    opacity: 0.34;
+    pointer-events: none;
+  }
+
+  /* A big halftone sunburst behind the middle of the cover */
+  .burst {
+    position: absolute;
+    left: 50%; top: 54%;
+    width: 150%;
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    background:
+      repeating-conic-gradient(from 8deg,
+        rgba(22,21,28,0.07) 0deg 6deg,
+        transparent 6deg 17deg);
+    -webkit-mask-image: radial-gradient(circle, black 0%, transparent 62%);
+    mask-image: radial-gradient(circle, black 0%, transparent 62%);
+    pointer-events: none;
+  }
+
+  /* ---- masthead ------------------------------------------------ */
+  header {
+    position: relative;
+    padding: clamp(18px, 5vh, 40px) 20px 6px;
+    text-align: center;
+    z-index: 2;
+  }
+
+  .issue-strip {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 6px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+
+  h1 {
+    font-family: Bangers, Impact, sans-serif;
+    font-weight: 400;
+    font-size: clamp(58px, 15vw, 118px);
+    line-height: 0.9;
+    letter-spacing: 0.015em;
+    color: var(--ink);
+    position: relative;
+    display: inline-block;
+    transform: rotate(-2deg);
+    cursor: default;
+    user-select: none;
+  }
+
+  /* CMYK misregistration: cyan and magenta plates peeking out */
+  h1::before, h1::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+  }
+  h1::before { color: var(--magenta); transform: translate(-5px, 3px); }
+  h1::after  { color: var(--cyan);    transform: translate(5px, -3px); }
+
+  /* ---- middle: tagline in a caption box ------------------------ */
+  main {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    place-content: center;
+    gap: 22px;
+    justify-items: center;
+    padding: 10px 28px;
+  }
+
+  .caption-box {
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    box-shadow: 5px 5px 0 var(--ink);
+    padding: 14px 20px;
+    max-width: 42ch;
+    transform: rotate(1deg);
+    font-size: clamp(14px, 2.2vw, 17px);
+    line-height: 1.45;
+    font-weight: 600;
+    color: var(--ink);
+    text-align: center;
+  }
+
+  .caption-box .lead {
+    color: var(--magenta);
+    font-family: Bangers, Impact, sans-serif;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    font-size: 1.25em;
+    margin-right: 2px;
+  }
+
+  /* ---- footer: key note + the one button ----------------------- */
+  footer {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    padding: 10px 20px clamp(20px, 5vh, 42px);
+  }
+
+  .key-note {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: rgba(22, 21, 28, 0.62);
+  }
+  .key-note code {
+    font-family: ui-monospace, monospace;
+    background: rgba(22, 21, 28, 0.08);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  button {
+    font-family: Bangers, Impact, sans-serif;
+    font-size: clamp(22px, 4vw, 30px);
+    letter-spacing: 0.05em;
+    padding: 12px 34px 10px;
+    color: var(--paper);
+    background: var(--ink);
+    border: 3px solid var(--ink);
+    box-shadow: 6px 6px 0 var(--magenta);
+    cursor: pointer;
+    transform: rotate(-1deg);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  button:hover {
+    transform: rotate(-1deg) translate(-2px, -2px);
+    box-shadow: 9px 9px 0 var(--magenta), 12px 12px 0 var(--cyan);
+  }
+  button:active {
+    transform: rotate(-1deg) translate(3px, 3px);
+    box-shadow: 2px 2px 0 var(--magenta);
+  }
+
+  /* corner price box, like a real cover */
+  .price {
+    position: absolute;
+    top: 14px; right: 14px;
+    width: 54px; height: 54px;
+    border: 3px solid var(--ink);
+    background: var(--yellow);
+    border-radius: 50%;
+    display: grid;
+    place-content: center;
+    text-align: center;
+    font-family: Bangers, Impact, sans-serif;
+    font-size: 13px;
+    line-height: 1;
+    color: var(--ink);
+    transform: rotate(8deg);
+    z-index: 3;
+  }
+</style>
+</head>
+<body>
+  <div class="desk">
+  <div class="cover">
+    <div class="burst"></div>
+    <div class="price">NO.<br/>001</div>
+    <header>
+      <div class="issue-strip"><span>A hand-tracked multiverse</span><span>Live</span></div>
+      <h1 id="title" data-text="VerseJumper">VerseJumper</h1>
+    </header>
+    <main>
+      <p class="caption-box"><span class="lead">In this issue:</span>
+        Open a portal with your hands and jump between Spider-Verse dimensions — live.</p>
+    </main>
+    <footer>
+      <p class="key-note">Set DECART API KEY at <code>portal/.env.local</code></p>
+      <button id="start-lucy">Start multiverse-hopping</button>
+    </footer>
+  </div>
+  </div>
+</body>
+</html>

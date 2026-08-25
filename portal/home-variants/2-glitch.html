@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>V2 · Dimensional Glitch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     VARIANT 2 — "YOU DON'T BELONG IN THIS DIMENSION"
+     The atom-glitch from the films: a dark room, and a title that
+     keeps tearing into red/cyan plates because it is from
+     somewhere else. Everything else stays dead still — the glitch
+     is the only thing moving.
+     Signature element: the glitching masthead.
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; }
+
+  :root {
+    --bg: #07080c;
+    --fg: #e9ecf4;
+    --muted: #6f7688;
+    --red: #ff2a4f;
+    --cyan: #00e5ff;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  /* faint scanlines over the whole room */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.025) 0 1px,
+      transparent 1px 3px);
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* Fixed full-viewport wrapper rather than a grid on <body>: browser
+     extensions inject divs into body, and a body grid hands them a row. */
+  .room {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 26px;
+    text-align: center;
+    padding: 24px;
+    z-index: 2;
+  }
+
+  /* a cold spotlight falling on the scene */
+  .room::before {
+    content: '';
+    position: absolute;
+    left: 50%; top: 42%;
+    width: 130vmin; height: 130vmin;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle,
+      rgba(0, 229, 255, 0.07) 0%,
+      rgba(255, 42, 79, 0.05) 34%,
+      transparent 62%);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  .glitch {
+    font-family: 'Archivo Black', Impact, sans-serif;
+    font-size: clamp(52px, 11vw, 128px);
+    line-height: 1;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+    position: relative;
+    user-select: none;
+    cursor: default;
+    animation: shudder 4.6s infinite steps(1);
+  }
+
+  /* the two departed plates */
+  .glitch::before, .glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    opacity: 0.85;
+    pointer-events: none;
+  }
+  .glitch::before {
+    color: var(--red);
+    z-index: -1;
+    animation: plate-a 4.6s infinite steps(1);
+  }
+  .glitch::after {
+    color: var(--cyan);
+    z-index: -2;
+    animation: plate-b 4.6s infinite steps(1);
+  }
+
+  /* Long stretches of calm, then a violent 300ms tear. The keyframe
+     percentages cluster around two "events" so it feels like a signal
+     dropping rather than a loop. */
+  @keyframes plate-a {
+    0%, 100% { transform: none; clip-path: none; }
+    7%  { transform: translate(-9px, 2px);  clip-path: polygon(0 12%, 100% 12%, 100% 38%, 0 38%); }
+    8%  { transform: translate(6px, -1px);  clip-path: polygon(0 55%, 100% 55%, 100% 72%, 0 72%); }
+    9%  { transform: none; clip-path: none; }
+    54% { transform: translate(-12px, 0);   clip-path: polygon(0 0, 100% 0, 100% 30%, 0 30%); }
+    55% { transform: translate(8px, 3px);   clip-path: polygon(0 64%, 100% 64%, 100% 100%, 0 100%); }
+    56.5% { transform: translate(-4px, 0);  clip-path: polygon(0 30%, 100% 30%, 100% 52%, 0 52%); }
+    58% { transform: none; clip-path: none; }
+  }
+  @keyframes plate-b {
+    0%, 100% { transform: none; clip-path: none; }
+    7%  { transform: translate(8px, -2px);  clip-path: polygon(0 40%, 100% 40%, 100% 64%, 0 64%); }
+    8%  { transform: translate(-7px, 1px);  clip-path: polygon(0 8%, 100% 8%, 100% 26%, 0 26%); }
+    9%  { transform: none; clip-path: none; }
+    54% { transform: translate(11px, 2px);  clip-path: polygon(0 44%, 100% 44%, 100% 70%, 0 70%); }
+    55% { transform: translate(-9px, -3px); clip-path: polygon(0 0, 100% 0, 100% 22%, 0 22%); }
+    56.5% { transform: translate(5px, 0);   clip-path: polygon(0 70%, 100% 70%, 100% 96%, 0 96%); }
+    58% { transform: none; clip-path: none; }
+  }
+  /* the base layer flinches, barely */
+  @keyframes shudder {
+    0%, 100% { transform: none; }
+    7.5% { transform: translateX(2px) skewX(-1.2deg); }
+    9%   { transform: none; }
+    54.5% { transform: translateX(-3px) skewX(1.6deg); }
+    58%  { transform: none; }
+  }
+
+  .tag {
+    max-width: 44ch;
+    font-size: clamp(15px, 2vw, 18px);
+    line-height: 1.55;
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .tag strong { color: var(--fg); font-weight: 500; }
+
+  .key-note {
+    font-size: 12.5px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-family: ui-monospace, monospace;
+  }
+  .key-note::before {
+    content: '▸ ';
+    color: var(--cyan);
+  }
+
+  button {
+    margin-top: 6px;
+    font: 600 16px/1 'Space Grotesk', sans-serif;
+    letter-spacing: 0.02em;
+    color: var(--bg);
+    background: var(--fg);
+    border: none;
+    padding: 15px 34px;
+    cursor: pointer;
+    position: relative;
+    transition: color 0.15s;
+  }
+  /* the button inherits a whisper of the aberration on hover */
+  button::before, button::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    transition: transform 0.15s ease;
+  }
+  button::before { background: var(--red); }
+  button::after  { background: var(--cyan); }
+  button:hover::before { transform: translate(-5px, 4px); }
+  button:hover::after  { transform: translate(5px, -4px); }
+  button:active::before, button:active::after { transform: none; }
+
+  /* status line pinned to the bottom, like a signal readout */
+  .readout {
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: rgba(111, 118, 136, 0.6);
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+  <div class="room">
+    <h1 class="glitch" id="title" data-text="VerseJumper">VerseJumper</h1>
+    <p class="tag">Open a <strong>portal with your hands</strong> and jump between
+      Spider-Verse dimensions — live.</p>
+    <p class="key-note">Set DECART API KEY at portal/.env.local</p>
+    <button id="start-lucy">Start multiverse-hopping</button>
+  </div>
+  <div class="readout">anomaly detected · earth-65 · signal unstable</div>
+</body>
+</html>

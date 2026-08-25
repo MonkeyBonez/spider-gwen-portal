@@ -108,7 +108,55 @@ html, body {
   z-index: 10;
 }
 
-.start h1 { margin: 0; font-size: 40px; letter-spacing: -0.02em; }
+/*
+ * The living backdrop (asciiBackdrop.ts): the camera as a field of glyphs,
+ * with a constellation knitting itself around whoever is in frame.
+ *
+ * Absolutely positioned rather than in flow, because `.start` is a grid and an
+ * in-flow canvas would claim a row and shove the copy off centre.
+ */
+.backdrop-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/*
+ * A pool of dark under the copy. The glyph field is busy everywhere, and the
+ * tagline has to survive being drawn over a bright window or a white wall.
+ */
+.backdrop-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(46% 42% at 50% 50%,
+    rgba(10, 11, 15, 0.82) 0%, rgba(10, 11, 15, 0.5) 60%, transparent 100%);
+}
+
+/* Everything that is not backdrop rides above it. */
+.start > h1,
+.start > p,
+.start > .key-row,
+.start > .button-row {
+  position: relative;
+  z-index: 1;
+}
+
+.start h1 {
+  margin: 0;
+  font-size: clamp(40px, 8vw, 92px);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+}
+
+/* "Jumper" in the portal's own green — the same accent the outline uses. */
+.start h1 .jump { color: var(--accent); }
+
 .start p { margin: 0; max-width: 46ch; line-height: 1.5; }
 .muted { color: var(--muted); font-size: 14px; }
 .keys { font-size: 12px; margin-top: 8px; }
@@ -133,6 +181,27 @@ button.secondary {
   background: transparent;
   color: var(--fg);
 }
+
+/*
+ * The one button that matters, in the portal's own green so the eye lands on
+ * it before it lands on anything else. Scoped to the start screen — the global
+ * `button` rule is shared with the debug panel and the review footer.
+ */
+.start #start-lucy {
+  padding: 15px 32px;
+  font-size: 15.5px;
+  background: var(--accent);
+  color: var(--bg);
+  border-color: transparent;
+  transition: box-shadow 0.3s ease, transform 0.15s ease;
+}
+
+.start #start-lucy:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 6px rgba(0, 255, 180, 0.12), 0 0 40px rgba(0, 255, 180, 0.25);
+}
+
+.start #start-lucy:active:not(:disabled) { transform: translateY(1px); }
 
 .small { font-size: 12px; max-width: 46ch; }
 

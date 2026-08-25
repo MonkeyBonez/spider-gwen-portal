@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VerseJumper · Home screen variants</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: #0a0b0f;
+    color: #e7e9ee;
+    font-family: system-ui, sans-serif;
+    min-height: 100vh;
+    display: grid;
+    place-content: center;
+    gap: 8px;
+    padding: 32px;
+  }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p  { color: #8a90a0; font-size: 13.5px; margin-bottom: 14px; }
+  a {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    width: min(92vw, 560px);
+    padding: 13px 18px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    color: inherit;
+    text-decoration: none;
+    font-size: 14.5px;
+  }
+  a:hover { border-color: #00ffb4; }
+  a span { color: #8a90a0; font-size: 13px; }
+  kbd {
+    font-family: ui-monospace, monospace;
+    color: #00ffb4;
+    margin-right: 10px;
+  }
+</style>
+</head>
+<body>
+  <h1>Home screen variants</h1>
+  <p>Same text, seven worlds. Previews only — the winner gets wired into the real app.</p>
+  <a href="1-halftone-cover.html"><b><kbd>1</kbd>Comic cover</b><span>paper, Ben-Day dots, CMYK masthead</span></a>
+  <a href="2-glitch.html"><b><kbd>2</kbd>Dimensional glitch</b><span>dark room, RGB-split tears</span></a>
+  <a href="3-portal-shader.html"><b><kbd>3</kbd>Portal shader</b><span>live WebGL aperture, zero deps</span></a>
+  <a href="4-earth65.html"><b><kbd>4</kbd>Earth-65</b><span>Gwen palette, light, watercolour</span></a>
+  <a href="5-action-page.html"><b><kbd>5</kbd>Action page</b><span>speed lines, starburst button</span></a>
+  <a href="6-web-constellation.html"><b><kbd>6</kbd>Web constellation</b><span>quiet dark + reactive web canvas</span></a>
+  <a href="7-print-poster.html"><b><kbd>7</kbd>One-sheet poster</b><span>type as scenery, print plates</span></a>
+  <a href="8-ascii-mirror.html"><b><kbd>8</kbd>ASCII mirror 📷</b><span>your webcam, live, as mint text</span></a>
+  <a href="9-halftone-mirror.html"><b><kbd>9</kbd>Halftone mirror 📷</b><span>your webcam screened into Ben-Day dots</span></a>
+  <a href="10-duotone-signal.html"><b><kbd>0</kbd>Duotone signal 📷</b><span>full-bleed feed, pink→teal grade, slice glitches</span></a>
+  <h1 style="margin-top:18px">Combos</h1>
+  <a href="c1-ascii-portal.html"><b><kbd>q</kbd>ASCII × Portal 📷</b><span>the aperture burns through you-as-text</span></a>
+  <a href="c2-ascii-web.html"><b><kbd>w</kbd>ASCII × Web 📷</b><span>the constellation drifts toward your silhouette</span></a>
+  <a href="c3-ascii-action.html"><b><kbd>e</kbd>ASCII × Action 📷</b><span>you are the comic's night sky, in glyphs</span></a>
+  <a href="c4-portal-web.html"><b><kbd>r</kbd>Portal × Web</b><span>the constellation orbits the aperture</span></a>
+  <a href="c5-portal-action.html"><b><kbd>t</kbd>Portal × Action</b><span>speed lines converge into a live aperture</span></a>
+  <a href="c6-web-action.html"><b><kbd>y</kbd>Web × Action</b><span>cyan web over the comic night, yellow cursor silk</span></a>
+  <h1 style="margin-top:18px">ASCII × Web riffs</h1>
+  <a href="c2b-glyph-voice.html"><b><kbd>a</kbd>Glyph Voice 📷</b><span>the mirror speaks up — three tiers, white highlights</span></a>
+  <a href="c2c-earth65-ink.html"><b><kbd>s</kbd>Earth-65 Ink 📷</b><span>pink shadows, teal highlights, pink cursor silk</span></a>
+  <a href="c2d-outline.html"><b><kbd>d</kbd>Outline 📷</b><span>the web traces your silhouette's edges</span></a>
+  <a href="c2e-silk.html"><b><kbd>f</kbd>Silk 📷</b><span>woven ╱╲╳ glyphs, cursor leaves a fading trail</span></a>
+<script>
+  const KEYS = { 1:0, 2:1, 3:2, 4:3, 5:4, 6:5, 7:6, 8:7, 9:8, 0:9,
+                 q:10, w:11, e:12, r:13, t:14, y:15,
+                 a:16, s:17, d:18, f:19 };
+  addEventListener('keydown', ev => {
+    const i = KEYS[ev.key];
+    if (i !== undefined) document.querySelectorAll('a')[i].click();
+  });
+</script>
+</body>
+</html>

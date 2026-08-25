@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>V8 · ASCII Mirror</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     VARIANT 8 — "ASCII MIRROR"
+     The homepage is already looking at you: the webcam feed is
+     rendered live as ASCII characters in the app's mint, so you
+     arrive as a signal from another dimension before you have
+     pressed anything. Copy sits on a dark card so it stays
+     readable over any room.
+     Signature element: you, as text.
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; }
+
+  :root {
+    --bg: #0a0b0f;
+    --fg: #e7e9ee;
+    --muted: #8a90a0;
+    --accent: #00ffb4;
+  }
+
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: Inter, system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  canvas#ascii {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+  }
+
+  /* soft vignette so the character field fades before the edges */
+  .vignette {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(120% 100% at 50% 50%,
+      transparent 40%, rgba(10, 11, 15, 0.82) 100%);
+    pointer-events: none;
+  }
+
+  .center {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    z-index: 2;
+  }
+
+  .card {
+    display: grid;
+    justify-items: center;
+    gap: 16px;
+    text-align: center;
+    background: rgba(10, 11, 15, 0.78);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(0, 255, 180, 0.25);
+    border-radius: 16px;
+    padding: clamp(26px, 5vh, 44px) clamp(26px, 5vw, 56px);
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
+  }
+
+  h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: clamp(40px, 7.5vw, 84px);
+    line-height: 1;
+    letter-spacing: -0.045em;
+    user-select: none;
+    cursor: default;
+  }
+  h1 em { font-style: normal; color: var(--accent); }
+
+  .tag {
+    max-width: 44ch;
+    font-size: clamp(15px, 2vw, 17.5px);
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  .key-note {
+    font-family: ui-monospace, monospace;
+    font-size: 12.5px;
+    letter-spacing: 0.05em;
+    color: #5d6373;
+  }
+
+  button {
+    margin-top: 8px;
+    font: 500 15.5px/1 Inter, sans-serif;
+    color: var(--bg);
+    background: var(--accent);
+    border: none;
+    border-radius: 999px;
+    padding: 15px 32px;
+    cursor: pointer;
+    transition: box-shadow 0.25s ease, transform 0.15s ease;
+  }
+  button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 6px rgba(0, 255, 180, 0.12), 0 0 44px rgba(0, 255, 180, 0.3);
+  }
+  button:active { transform: translateY(1px); }
+
+  .cam-note {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(138, 144, 160, 0.55);
+    z-index: 2;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+  <canvas id="ascii"></canvas>
+  <div class="vignette"></div>
+
+  <div class="center">
+    <main class="card">
+      <h1 id="title">Verse<em>Jumper</em></h1>
+      <p class="tag">Open a portal with your hands and jump between Spider-Verse
+        dimensions — live.</p>
+      <p class="key-note">Set DECART API KEY at portal/.env.local</p>
+      <button id="start-lucy">Start multiverse-hopping</button>
+    </main>
+  </div>
+
+  <div class="cam-note" id="cam-note">camera stays on this machine — nothing streams until you start</div>
+
+<script>
+const canvas = document.getElementById('ascii');
+const ctx = canvas.getContext('2d');
+const note = document.getElementById('cam-note');
+
+// Dark-background ramp: brighter pixel → denser glyph.
+const RAMP = ' .:-=+*#%@';
+
+const CELL_W = 9;
+const CELL_H = 15;
+let cols = 0, rows = 0;
+
+// The sampler: the video is drawn tiny (one pixel per character cell),
+// then each pixel's luminance picks a glyph.
+const sampler = document.createElement('canvas');
+const sctx = sampler.getContext('2d', { willReadFrequently: true });
+
+const video = document.createElement('video');
+video.muted = true;
+video.playsInline = true;
+
+function resize() {
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+  cols = Math.ceil(innerWidth / CELL_W);
+  rows = Math.ceil(innerHeight / CELL_H);
+  sampler.width = cols;
+  sampler.height = rows;
+}
+addEventListener('resize', resize);
+resize();
+
+function frame() {
+  if (video.readyState >= 2) {
+    // cover-crop the video to the canvas aspect, mirrored like a mirror
+    const va = video.videoWidth / video.videoHeight;
+    const ca = canvas.width / canvas.height;
+    let sw = video.videoWidth, sh = video.videoHeight, sx = 0, sy = 0;
+    if (va > ca) { sw = sh * ca; sx = (video.videoWidth - sw) / 2; }
+    else { sh = sw / ca; sy = (video.videoHeight - sh) / 2; }
+
+    sctx.save();
+    sctx.scale(-1, 1);
+    sctx.drawImage(video, sx, sy, sw, sh, -cols, 0, cols, rows);
+    sctx.restore();
+
+    const px = sctx.getImageData(0, 0, cols, rows).data;
+
+    // Auto-exposure: a dim room would render as near-blank space, so gain the
+    // luminance toward a healthy midtone. A well-lit room passes unchanged.
+    const lums = new Float32Array(cols * rows);
+    let sum = 0;
+    for (let c = 0, i = 0; c < lums.length; c++, i += 4) {
+      const l = (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255;
+      lums[c] = l; sum += l;
+    }
+    const gain = Math.min(6, Math.max(1, 0.45 / (sum / lums.length + 0.001)));
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#0a0b0f';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `${CELL_H - 2}px ui-monospace, Menlo, monospace`;
+    ctx.textBaseline = 'top';
+    // The font's natural advance is narrower than CELL_W, which left a dead
+    // band at the right edge — scale x so one glyph lands on exactly one cell.
+    const adv = ctx.measureText('M').width || CELL_W;
+    ctx.setTransform(CELL_W / adv, 0, 0, 1, 0, 0);
+
+    // Two passes: dim glyphs in a quiet mint, the brightest in full accent.
+    // Row strings keep it to one fillText per row per pass — cheap.
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.fillStyle = pass === 0 ? 'rgba(0, 255, 180, 0.32)' : 'rgba(0, 255, 180, 0.85)';
+      for (let y = 0; y < rows; y++) {
+        let line = '';
+        for (let x = 0; x < cols; x++) {
+          const lum = Math.min(1, lums[y * cols + x] * gain);
+          const idx = Math.min(RAMP.length - 1, Math.floor(lum * RAMP.length));
+          const bright = lum > 0.62;
+          line += (pass === 0 ? !bright : bright) ? RAMP[idx] : ' ';
+        }
+        ctx.fillText(line, 0, y * CELL_H);
+      }
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+// Raced against a timeout: with the camera held open by other tabs, Chrome
+// can leave this promise pending forever rather than rejecting it.
+Promise.race([
+  navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 360 } }),
+  new Promise((_, rej) => setTimeout(() => rej(new Error('camera busy')), 6000)),
+])
+  .then(stream => {
+    video.srcObject = stream;
+    return video.play();
+  })
+  .then(() => requestAnimationFrame(frame))
+  .catch(() => {
+    note.textContent = 'camera unavailable or busy — close other tabs using it, then reload';
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>V9 · Halftone Mirror</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     VARIANT 9 — "YOU, PRINTED"
+     The webcam feed is screened live into Ben-Day halftone dots
+     on comic paper — you are already a panel in the book. Ink
+     dots grow where you are dark, a magenta plate drifts just
+     out of register underneath. Copy in real caption boxes.
+     Signature element: you, as print.
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; }
+
+  :root {
+    --paper: #f3ead8;
+    --ink: #221f2b;
+    --magenta: #ff2e88;
+    --cyan: #00b3e3;
+    --yellow: #ffd400;
+  }
+
+  html, body { height: 100%; }
+  body {
+    background: var(--paper);
+    font-family: Inter, system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  canvas#dots {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+  }
+
+  .center {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: clamp(16px, 3vh, 26px);
+    text-align: center;
+    padding: 24px;
+    z-index: 2;
+  }
+
+  h1 {
+    font-family: Bangers, Impact, sans-serif;
+    font-weight: 400;
+    font-size: clamp(58px, 12.5vw, 122px);
+    line-height: 0.9;
+    letter-spacing: 0.015em;
+    color: var(--ink);
+    position: relative;
+    transform: rotate(-2deg);
+    user-select: none;
+    cursor: default;
+    /* paper halo keeps the masthead readable over any face */
+    text-shadow:
+      0 0 18px var(--paper), 0 0 34px var(--paper), 0 0 50px var(--paper);
+  }
+  h1::before, h1::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    text-shadow: none;
+  }
+  h1::before { color: var(--magenta); transform: translate(-5px, 3px); }
+  h1::after  { color: var(--cyan);    transform: translate(5px, -3px); }
+
+  .caption-box {
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    box-shadow: 5px 5px 0 var(--ink);
+    padding: 13px 20px;
+    max-width: 44ch;
+    transform: rotate(1deg);
+    font-size: clamp(14px, 2vw, 16.5px);
+    line-height: 1.45;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .key-note {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: rgba(34, 31, 43, 0.72);
+    background: var(--paper);
+    border: 2px solid var(--ink);
+    padding: 5px 14px;
+    transform: rotate(-0.8deg);
+  }
+  .key-note code {
+    font-family: ui-monospace, monospace;
+    background: rgba(34, 31, 43, 0.08);
+    padding: 1px 5px;
+  }
+
+  button {
+    margin-top: 4px;
+    font-family: Bangers, Impact, sans-serif;
+    font-size: clamp(22px, 4vw, 30px);
+    letter-spacing: 0.05em;
+    padding: 12px 34px 10px;
+    color: var(--paper);
+    background: var(--ink);
+    border: 3px solid var(--ink);
+    box-shadow: 6px 6px 0 var(--magenta);
+    cursor: pointer;
+    transform: rotate(-1deg);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  button:hover {
+    transform: rotate(-1deg) translate(-2px, -2px);
+    box-shadow: 9px 9px 0 var(--magenta), 12px 12px 0 var(--cyan);
+  }
+  button:active {
+    transform: rotate(-1deg) translate(3px, 3px);
+    box-shadow: 2px 2px 0 var(--magenta);
+  }
+
+  .cam-note {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(34, 31, 43, 0.45);
+    z-index: 2;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+  <canvas id="dots"></canvas>
+
+  <div class="center">
+    <h1 id="title" data-text="VerseJumper">VerseJumper</h1>
+    <p class="caption-box">Open a portal with your hands and jump between
+      Spider-Verse dimensions — live.</p>
+    <p class="key-note">Set DECART API KEY at <code>portal/.env.local</code></p>
+    <button id="start-lucy">Start multiverse-hopping</button>
+  </div>
+
+  <div class="cam-note" id="cam-note">camera stays on this machine — nothing streams until you start</div>
+
+<script>
+const canvas = document.getElementById('dots');
+const ctx = canvas.getContext('2d');
+const note = document.getElementById('cam-note');
+
+// One dot per CELL px. The canvas renders at reduced resolution and CSS
+// scales it up — softer dots, third of the work.
+const SCALE = 0.55;
+const CELL = 7;
+let cols = 0, rows = 0;
+
+const sampler = document.createElement('canvas');
+const sctx = sampler.getContext('2d', { willReadFrequently: true });
+
+const video = document.createElement('video');
+video.muted = true;
+video.playsInline = true;
+
+function resize() {
+  canvas.width = Math.floor(innerWidth * SCALE);
+  canvas.height = Math.floor(innerHeight * SCALE);
+  cols = Math.ceil(canvas.width / CELL);
+  rows = Math.ceil(canvas.height / CELL);
+  sampler.width = cols;
+  sampler.height = rows;
+}
+addEventListener('resize', resize);
+resize();
+
+function drawPlate(px, colour, offX, offY, maxR, gamma) {
+  ctx.fillStyle = colour;
+  for (let y = 0; y < rows; y++) {
+    // stagger alternate rows like a real halftone screen
+    const shift = (y % 2) * CELL * 0.5;
+    for (let x = 0; x < cols; x++) {
+      const i = (y * cols + x) * 4;
+      const lum = (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255;
+      // print logic: dark subject → big ink dot
+      const r = maxR * Math.pow(1 - lum, gamma);
+      if (r < 0.35) continue;
+      ctx.beginPath();
+      ctx.arc(x * CELL + shift + offX, y * CELL + offY, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function frame() {
+  if (video.readyState >= 2) {
+    const va = video.videoWidth / video.videoHeight;
+    const ca = canvas.width / canvas.height;
+    let sw = video.videoWidth, sh = video.videoHeight, sx = 0, sy = 0;
+    if (va > ca) { sw = sh * ca; sx = (video.videoWidth - sw) / 2; }
+    else { sh = sw / ca; sy = (video.videoHeight - sh) / 2; }
+
+    sctx.save();
+    sctx.scale(-1, 1);
+    sctx.drawImage(video, sx, sy, sw, sh, -cols, 0, cols, rows);
+    sctx.restore();
+
+    const px = sctx.getImageData(0, 0, cols, rows).data;
+
+    ctx.fillStyle = '#f3ead8';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // magenta plate slightly out of register, then the ink plate on top
+    drawPlate(px, 'rgba(255, 46, 136, 0.4)', 2.2, 1.6, CELL * 0.62, 1.6);
+    drawPlate(px, 'rgba(34, 31, 43, 0.92)', 0, 0, CELL * 0.58, 1.35);
+  }
+  requestAnimationFrame(frame);
+}
+
+// Raced against a timeout: with the camera held open by other tabs, Chrome
+// can leave this promise pending forever rather than rejecting it.
+Promise.race([
+  navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 360 } }),
+  new Promise((_, rej) => setTimeout(() => rej(new Error('camera busy')), 6000)),
+])
+  .then(stream => {
+    video.srcObject = stream;
+    return video.play();
+  })
+  .then(() => requestAnimationFrame(frame))
+  .catch(() => {
+    note.textContent = 'camera unavailable or busy — close other tabs using it, then reload';
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>V4 · Earth-65</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;800&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     VARIANT 4 — "EARTH-65"
+     Spider-Gwen's cover language: white ground, hot pink and teal
+     watercolour blooms, sharp hood angles. The one light variant.
+     Signature element: the hood-shaped colour field the title
+     sits inside.
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; }
+
+  :root {
+    --paper: #f7f6fb;
+    --ink: #17141f;
+    --pink: #ff2e97;
+    --teal: #00c2c7;
+    --violet: #6b5bd2;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Inter, system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  /* Fixed full-viewport wrapper rather than a grid on <body>: browser
+     extensions inject divs into body, and a body grid hands them a row. */
+  .center {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    z-index: 2;
+  }
+
+  /* watercolour blooms: layered soft radial washes, slightly grainy */
+  .wash {
+    position: fixed;
+    inset: -20%;
+    pointer-events: none;
+    background:
+      radial-gradient(38% 34% at 76% 18%, rgba(255, 46, 151, 0.34), transparent 70%),
+      radial-gradient(30% 36% at 12% 78%, rgba(0, 194, 199, 0.3), transparent 70%),
+      radial-gradient(26% 26% at 88% 82%, rgba(107, 91, 210, 0.22), transparent 70%),
+      radial-gradient(20% 22% at 24% 12%, rgba(255, 46, 151, 0.14), transparent 70%);
+    filter: blur(2px);
+    animation: drift 26s ease-in-out infinite alternate;
+  }
+  @keyframes drift {
+    from { transform: translate(0, 0) scale(1); }
+    to   { transform: translate(-2.5%, 2%) scale(1.05); }
+  }
+
+  /* paper grain */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* the hood: a sharp angular panel the masthead lives inside */
+  .hood {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    gap: 20px;
+    text-align: center;
+    padding: clamp(40px, 8vh, 78px) clamp(28px, 7vw, 84px);
+    z-index: 2;
+  }
+  .hood::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: #ffffff;
+    border: 2px solid var(--ink);
+    clip-path: polygon(3% 0, 97% 2%, 100% 22%, 98% 96%, 60% 100%, 4% 98%, 0 30%);
+    box-shadow: 0 30px 80px rgba(23, 20, 31, 0.12);
+    z-index: -1;
+  }
+  /* the hood's pink lining, peeking out along two edges */
+  .hood::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translate(12px, 12px);
+    background: var(--pink);
+    clip-path: polygon(3% 0, 97% 2%, 100% 22%, 98% 96%, 60% 100%, 4% 98%, 0 30%);
+    z-index: -2;
+  }
+
+  .eyebrow {
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: var(--violet);
+  }
+
+  h1 {
+    font-family: Syne, sans-serif;
+    font-weight: 800;
+    font-size: clamp(46px, 9vw, 100px);
+    line-height: 0.98;
+    letter-spacing: -0.035em;
+    user-select: none;
+    cursor: default;
+  }
+  /* Verse in ink, Jumper knocked out in pink→teal — the mask split */
+  h1 .a { color: var(--ink); }
+  h1 .b {
+    background: linear-gradient(100deg, var(--pink) 20%, var(--violet) 55%, var(--teal) 85%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .tag {
+    max-width: 42ch;
+    font-size: clamp(15px, 2vw, 17.5px);
+    line-height: 1.55;
+    color: #4c485c;
+  }
+
+  .key-note {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: #8b8699;
+  }
+
+  button {
+    margin-top: 6px;
+    font: 600 15.5px/1 Inter, sans-serif;
+    color: #fff;
+    background: var(--ink);
+    border: 2px solid var(--ink);
+    padding: 15px 34px;
+    cursor: pointer;
+    position: relative;
+    clip-path: polygon(4% 0, 100% 0, 96% 100%, 0 100%);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  button:hover { background: var(--pink); border-color: var(--pink); }
+  button:active { background: var(--violet); border-color: var(--violet); }
+
+  /* ballet slipper ribbon: one thin diagonal line crossing the page */
+  .ribbon {
+    position: fixed;
+    left: -10%;
+    top: 68%;
+    width: 120%;
+    height: 2px;
+    background: var(--teal);
+    transform: rotate(-7deg);
+    opacity: 0.6;
+    z-index: 1;
+  }
+  .ribbon::after {
+    content: '';
+    position: absolute;
+    right: 18%;
+    top: -5px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--pink);
+  }
+</style>
+</head>
+<body>
+  <div class="wash"></div>
+  <div class="ribbon"></div>
+
+  <div class="center">
+    <main class="hood">
+      <p class="eyebrow">Earth-65 · Live feed</p>
+      <h1 id="title"><span class="a">Verse</span><span class="b">Jumper</span></h1>
+      <p class="tag">Open a portal with your hands and jump between Spider-Verse
+        dimensions — live.</p>
+      <p class="key-note">Set DECART API KEY at portal/.env.local</p>
+      <button id="start-lucy">Start multiverse-hopping</button>
+    </main>
+  </div>
+</body>
+</html>
