@@ -8,7 +8,7 @@
  * **The 2026-08-23 set, chosen by Sne.** It keeps the two known quantities from
  * the phrasing A/B, restores the *original* multiverse phrasing (the rewrite
  * from 2026-08-17 never got a run and is preserved in git history), and adds
- * two scene experiments: a named location and extra characters.
+ * two scene experiments: a named location and a prop the subject is using.
  * The open question has moved from "how do you phrase the suit" — answered:
  * lead with the costumed subject, name the technique — to "what beyond the
  * suit can a prompt add".
@@ -35,8 +35,8 @@
  * clearly, "in a skyscraper" (from the retired `mask-only`) did not appear at
  * all. The distinction looks like texture-vs-place — a style word applies
  * across whatever is in frame, a specific location needs room the shot does
- * not have, since the subject fills it. `skyscraper` and `hangout` test
- * whether "on top of" or added characters fare any better.
+ * not have, since the subject fills it. `skyscraper` and `soda` test whether
+ * "on top of" or a held prop fare any better.
  */
 
 export interface Dimension {
@@ -80,12 +80,18 @@ export const DIMENSIONS: Dimension[] = [
       'Subject is a Superhero in a red-and-blue spider suit on top of a skyscraper',
   },
   {
-    // The proven comic prompt plus extra characters. Tests whether Lucy can
-    // add people who are not in the frame, or only restyle who is.
-    name: 'hangout',
+    // The proven comic prompt plus a prop and an action. Rewritten 2026-08-24:
+    // it previously asked for "a few other superheroes hanging out having a
+    // drink", testing whether Lucy could add people who are not in the frame.
+    // This asks the subject who *is* in frame to hold something instead —
+    // a narrower question, and one the shot has room for.
+    //
+    // Note where the added clause sits: inside the subject phrase, before the
+    // technique words, rather than trailing after them as the old one did.
+    name: 'soda',
     color: '#2ecc71',
     prompt:
-      'Comic-book animated superhero in a red-and-blue spider suit, halftone shading, bold ink outlines with a few other superheroes hanging out having a drink',
+      'Comic-book animated superhero in a red-and-blue spider suit having a drink from a soda, halftone shading, bold ink outlines',
   },
 ];
 
