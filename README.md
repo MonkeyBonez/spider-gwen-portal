@@ -3,15 +3,12 @@
 Open a portal with your hands and jump between Spider-Verse dimensions — live,
 on your own webcam.
 
-<!--
-  DEMO GOES HERE.
-  Drop a gif or an mp4 in docs/ and link it, e.g.
 
-      ![VerseJumper](docs/demo.gif)
 
-  GitHub plays mp4 if you drag the file into an issue and paste the URL it gives
-  you; a gif is the safer bet for autoplay in the README itself.
--->
+https://github.com/user-attachments/assets/6ce20b29-3834-4c1b-a60e-e1799b5d0f98
+
+
+
 
 ## What it is
 
